@@ -77,6 +77,16 @@ pypcap (a modified version for scapy), libdnet, and pyreadline.
 it as "C:\WINDOWS\passer".
 
 
+======== Docker ========
+
+You may also use passer within docker. You can build the passer image like this:
+docker build -t passer .
+
+And then you can run it like this:
+docker run --rm -it --name=passer --net=host passer
+
+In order to kill passer you can run:
+docker stop passer
 
 
 ======== Examples ========
