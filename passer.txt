@@ -58,6 +58,9 @@ Suggested install lines for Redhat/rpm-based distros:
 sudo yum install nmap ettercap arp-scan wireshark
 echo 'noenum = [ Resolve(), TCP_SERVICES, UDP_SERVICES ]' >>~/.scapy_startup.py
 
+	Finally, create a directory for configuration files:
+mkdir -p $HOME/.passer/
+
 
 Windows install notes - incomplete:
 
