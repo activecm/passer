@@ -21,7 +21,7 @@ ENTRYPOINT ["python", "/passer.py"]
 LABEL org.opencontainers.image.title="passer"
 LABEL org.opencontainers.image.description="PASsive SERvice sniffer"
 LABEL org.opencontainers.image.url="https://github.com/activecm/passer"
-LABEL org.opencontainers.image.documentation="https://github.com/activecm/passer/blob/master/passer.txt"
+LABEL org.opencontainers.image.documentation="https://github.com/activecm/passer/blob/master/README.md"
 
 # docker build -t passer .
 # docker run --rm -it --name=passer --net=host passer
