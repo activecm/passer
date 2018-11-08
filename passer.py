@@ -279,8 +279,8 @@ amplified_any_domains = ('paypalobjects.com.', 'domain.doesnt.exist.anywhereZZZZ
 amplified_any_ds_dnsobjs = ('ietf.org.', 'domain.doesnt.exist.anywhereZZZZ')
 amplified_any_ns_dnsobjs = ('domenamocy.pl.', 'vlch.net.')		#Can't put '.' in for NS; there appear to be legitimate queries for it.
 amplified_any_txt_dnsobjs = ('1x1.cz.', 'admin.blueorangecare.com.', 'admin.gull.ca.', 'amp.crack-zone.ru.', 'bmw.digmehl.cu.cc.', 'cmiui.com.', 'etk.heckbro.cu.cc.', 'non.digmehl.cu.cc.', 't4.deparel.com.', 'txt.pwserver.com.ua.', 'txt409.tekjeton.com.', 'x.mpnp.info.', 'x.privetrc.com.', 'x.slnm.info.', 'x.xipzersscc.com.', 'ym.rctrhash.com.', 'zzgst.com.')
-unamplified_any_domains = ('868.pars.', '9999mb.com.', 'abc.school.', 'amazon.com.', 'andrewhatch.net.', 'arbornet.org.', 'arrigo.dyndns.org.', 'bal.us.', 'bankanet.com.tr.', 'brioweb.eu.', 'chinawoktowsonmd.com.', 'cmc-nh.org.', 'cotmail.com.', 'dearmans.com.', 'dtss.org.', 'dyn.com.', 'dynapis.com.', 'eblast.com.', 'foodatlanta.com.', 'giveemthebird.com.', 'gnw.tv.', 'haineng258.com.', 'heartware.com.', 'homologacionesxtreme.com.', 'ibac.ind.br.', 'ibartendsf.com.', 'in-addr.arpa.', 'incidents.org.', 'indeedemail.com.', 'integralcom.eu.', 'integratedeyecenter.com.', 'integratedmedia.us.com.', 'ip6.arpa.', 'jesslilly.com.', 'jiveon.com.', 'jjkeller.com.', 'local.', 'metacraft.com.', 'mwrrr.org.', 'nachemodanah.net.', 'nehomes.com.', 'notillveggies.org.', 'ns2.bosowa.net.', 'ns1.metacraft.com.', 'ns2.metacraft.com.', 'nu-manity.com.', 'openbittorrent.kg.', 'overlakeoptical.com.', 'overlacknl.nl.', 'peggyfarber.com.', 'pierson.ca.', 'pornstarstats.com.', 'qrsparadigm.com.', 'qspirit.ca.', 'rob.stearns.org.', 'rockvillewbc.org.', 'rockyvotolato.com.', 'savenowfurniture.com.', 'servedby-buysellads.com.', 'sheriff.hamilton.co.org.', 'sherigauthier.com.', 'stearns.org.', 'tampabaywaterfront.net.', 'tastyandcoregopark.com.', 'tourdesigns.com.', 'tourdesignsinc.com.', 'trendmicro.com.', 'tumblr.com.', 'twig.gs.', 'usedcarsofarlington.com.', 'vpilot.metacraft.com.', 'westmontchiro.com.', 'whoopis.com.', 'xsdgs.ca.', 'yourgreatfinds.com.')
-unsure_any_domains = ('.', '123securityproducts.com.', '4verne.com.', 'aeon.com.sv.', 'alrayyan.fm.', 'amplists.com.', 'aromaat.com.', 'cns-inc.com.', 'darkraven.com.', 'db.org.', 'dynect.net.', 'ebay.com.', 'ekhlhlgynje.click.', 'google.com.', 'grovestreetlofts.com.', 'httrack.com.', 'iheart.com.', 'lcottle.com.', 'marasgroup.net.', 'meetingin-chn2.zoho.com.', 'missouri.edu.', 'ncvac.org.', 'overlakeorthodontics.com.', 'rbs.com.', 'rohnhein.com.', 'ronnudden.homeip.net.', 'sans.org.', 'site24x7.com.', 'wftelemanagement.com.', 'wfpma.com.')
+unamplified_any_domains = ('in-addr.arpa.', 'ip6.arpa.', 'local.', 'rob.stearns.org.', 'stearns.org.', 'tourdesigns.com.', 'tourdesignsinc.com.')
+unsure_any_domains = ()
 
 botnet_domains = ('ddos.cat.')
 botnet_hosts = ('magnesium.ddos.cat.')
@@ -656,7 +656,7 @@ task_layers = set(['BOOTP', 'Control message', 'DHCP options', 'DNS', 'GRE', 'HS
 trailer_layers = set(['Raw', 'Padding'])
 special_layers = set(['802.1Q', '802.3', 'ARP', 'EAPOL', 'Ethernet', 'LLC', 'Padding', 'Raw', 'SNAP', 'Spanning Tree Protocol'])
 
-passerVersion = "2.58"
+passerVersion = "2.59"
 
 
 #======== Functions ========
