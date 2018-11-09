@@ -1,19 +1,21 @@
-FROM python:2.7-slim
+FROM python:2.7-alpine
 
-# Prevent packages like wireshark from prompting
-ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    arp-scan \
-    ettercap-text-only \
-    nmap \
-    wireshark \
-    && rm -rf /var/lib/apt/lists/
+# Shorten common strings
+ARG GH=https://raw.githubusercontent.com
+ARG USR=/usr/share
+# Install data files
+ADD $GH/Ettercap/ettercap/master/share/etter.finger.mac $USR/ettercap/etter.finger.mac
+ADD $GH/nmap/nmap/master/nmap-mac-prefixes              $USR/nmap/nmap-mac-prefixes
+ADD $GH/wireshark/wireshark/master/manuf                $USR/wireshark/manuf
+ADD $GH/royhills/arp-scan/master/ieee-oui.txt           $USR/arp-scan/ieee-oui.txt
+ADD $GH/nmap/nmap/master/nmap-service-probes            $USR/nmap/nmap-service-probes
 
-ADD requirements.txt /requirements.txt
+# Install and configure python libraries
+COPY requirements.txt /requirements.txt
 RUN pip install --no-cache-dir -r /requirements.txt
 RUN echo 'noenum = [ Resolve(), TCP_SERVICES, UDP_SERVICES ]' >> $HOME/.scapy_startup.py
 
-ADD passer.py /passer.py
+COPY passer.py /passer.py
 
 ENTRYPOINT ["python", "/passer.py"]
 
