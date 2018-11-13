@@ -58,82 +58,127 @@ To install scapy, see the [installation guide](https://scapy.readthedocs.io/en/l
 
 ### Docker
 
-You may also use passer within docker. You can build the passer image like this:
-```
-docker build -t passer .
+You may also use passer within docker. Building is optional as you can also jump straight to the `docker run` command or the examples which will pull a pre-build docker image from a public repository. You can build the passer image like this:
+```bash
+docker build -t quay.io/activecm/passer .
 ```
 
 And then you can run it like this:
-```
-docker run --rm -it --name=passer --net=host passer
+```bash
+docker run --rm -i --name=passer --net=host quay.io/activecm/passer
 ```
 
 In order to kill passer you can run:
-```
+```bash
 docker stop passer
 ```
 
 ## Examples
 
-1) Sniff live as root
+Both native and docker equivalent commands are given for each of the following examples. For the docker commands, please use the following bash function which is a wrapper around the docker command with the the additional ability to parse volume mount arguments:
+```bash
+# "c" for "containerized"
+function cpasser() {  
+  local docker_args=("--rm" "--interactive" "--name" "passer" "--net" "host")
+  local passer_args=()
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      -v|--volume)
+        # pop next two arguments off and append to docker args
+        docker_args+=("$1"); shift
+        docker_args+=("$1"); shift
+        ;;
+      -v=*|--volume=*)
+        # pop next argument off and append to docker args
+        docker_args+=("$1"); shift
+        ;;
+      *)
+        # pop next argument off and append to passer args
+        passer_args+=("$1"); shift
+        ;;
+    esac
+  done
+  docker run "${docker_args[@]}" quay.io/activecm/passer "${passer_args[@]}"
+}
 ```
+
+1) Sniff live as root
+```bash
 /path/to/passer.py
+# or with docker
+cpasser
 ```
 This sniffs from all network interfaces and sends all output
 lines to your console.
 
 2) Sniff live as a non-root user
-```
+```bash
 sudo /path/to/passer.py
 ```
 or
-```
+```bash
 su - -c '/path/to/passer.py'
 ```
 
 3) Sniff live as root, but only from one interface
-```
+```bash
 /path/to/passer.py -i IfaceName
+# or with docker
+cpasser -i IfaceName
 ```
 Running `route` should give some live interfaces you might use. 
 This is incompatible with "-r".
 
-
 4) Read packets from a pcap file; no root privileges needed
-```
+```bash
 /path/to/passer.py -r /path/to/packets.pcap
+# or with docker
+cpasser -v /path/to/packets.pcap:/packets.pcap -r /packets.pcap
 ```
 This is incompatible with "-i".
 
 5) Accept raw pcap data on stdin
-```
+```bash
 cat packetdata.pcap | ./passer.py -r /proc/self/fd/0
 zcat packetdata.pcap.gz | ./passer.py -r /proc/self/fd/0
 bzcat packetdata.pcap.bz2 | ./passer.py -r /proc/self/fd/0
 tcpdump -i eth0 -qtnp -w - | ./passer.py -r /proc/self/fd/0
+# or with docker
+cat packetdata.pcap | cpasser -r /proc/self/fd/0
+# etc...
 ```
 This lets you capture packets with any tool that can save
 packets to a pcap file, and later process them with passer on a
 different system.
 
 6) Save output lines to a text file for later processing
-```
+```bash
 /path/to/passer.py -l /path/to/networkinfo.txt
+# or with docker
+touch /path/to/networkinfo.txt
+cpasser -v /path/to/networkinfo.txt.pcap:/networkinfo.txt -l /networkinfo.txt
 ```
 
 7) Suppress warnings and other debugging info
-```
+```bash
 /path/to/passer.py 2>/dev/null
+# or with docker
+cpasser 2>/dev/null
 ```
 
 8) Show help screen
-```
-/path/to/passer.py -h 
+```bash
+/path/to/passer.py -h
+# or with docker
+cpasser -h
 ```
 
 9) Save "odd"/unhandled packets to a pcap file
-```
+```bash
 /path/to/passer.py -u /path/to/oddpackets.pcap
+# or with docker
+touch /path/to/oddpackets.pcap
+cpasser -v /path/to/oddpackets.pcap:/oddpackets.pcap -u /oddpackets.pcap
 ```
 This is generally intended for the development process; packets
 saved to this file are ones that need to have signatures written.  If
@@ -149,8 +194,10 @@ underlying library does not appear to successfully use the supplied
 filter, but there's a workaround.  Use tcpdump to do the filtering, and
 hand the pared-down set of packets to passer on stdin, like above:
 
-```
+```bash
 tcpdump -r packets.pcap -w - 'icmp or arp' | ./passer.py -r /proc/self/fd/0
+# or with docker
+tcpdump -r packets.pcap -w - 'icmp or arp' | cpasser -r /proc/self/fd/0
 ```
 
 See the "Sample filters" section, below, for some suggestions of
@@ -199,52 +246,52 @@ Here are some examples of how to get the data you want out of
 these lines:
 
 1) Remove duplicate lines:
-```
+```bash
 cat /var/tmp/passer-log | sort -u | less
 ```
 
 2) Remove duplicate lines and group all records for a given IP together:
-```
+```bash
 cat /var/tmp/passer-log | sort -t, -k2 -u | less
 ```
 
 3) Grab just the DNS and Router records:
-```
+```bash
 cat /var/tmp/passer-log | sort -u | egrep '(^DN|^RO)' | less
 ```
 
 4) See all records for a particular IP address:
-```
+```bash
 cat /var/tmp/passer-log | sort -u | grep ',192\.168\.0\.17,' | less
 ```
 
 5) See all records for a particular network:
-```
+```bash
 cat /var/tmp/passer-log | sort -u | grep ',192\.168\.' | less
 ```
 
 6) See all machines that are listing on TCP port 25 (smtp servers):
-```
+```bash
 cat /var/tmp/passer-log | sort -u | grep ',TCP_25,listening,' | less
 ```
 
 7) Don't display closed ports:
-```
+```bash
 cat /var/tmp/passer-log | sort -u | grep -v ',closed,' | less
 ```
 
 8) _Only_ display closed ports:
-```
+```bash
 cat /var/tmp/passer-log | sort -u | grep ',closed,' | less
 ```
 
 9) Show all DNS records in the "google.com" domains:
-```
+```bash
 cat /var/tmp/passer-log | sort -u | grep -i 'google\.com\.,' | less
 ```
 
 10) Grab all the DNS address records and create a hosts-like file:
-```
+```bash
 /path/to/make-hosts /var/tmp/passer-log | /path/to/mergehosts.pl >/var/tmp/passer-hosts
 ```
 "make-hosts" and merge-hosts are separate shell and perl scripts
