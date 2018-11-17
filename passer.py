@@ -37,7 +37,6 @@ import pytz
 #This may be too restrictive.
 #from scapy import sniff, p0f, sr1, IP, ICMP, IPerror, TCPerror, UDPerror, ICMPerror
 
-#from scapy import *
 try:
 	from scapy.all import * #Required for Scapy 2.0 and above
 	use_scapy_all = True
@@ -656,7 +655,7 @@ task_layers = set(['BOOTP', 'Control message', 'DHCP options', 'DNS', 'GRE', 'HS
 trailer_layers = set(['Raw', 'Padding'])
 special_layers = set(['802.1Q', '802.3', 'ARP', 'EAPOL', 'Ethernet', 'LLC', 'Padding', 'Raw', 'SNAP', 'Spanning Tree Protocol'])
 
-passerVersion = "2.59"
+passerVersion = "2.60"
 
 
 #======== Functions ========
@@ -1101,8 +1100,8 @@ def LoadNmapServiceFP(ServiceFileName):
 
 
 
-def ip_addr_obj(raw_addr):
-	"""Returns an ip obj for the input string.  The raw_addr string should already have leading and trailing whitespace removed before being handed to this function."""
+def explode_ip(raw_addr):
+	"""Converts the input IP address string into its exploded form (type "unicode" in python2) ready for printing.  The raw_addr string should already have leading and trailing whitespace removed before being handed to this function.  If it's not a valid IP address, returns an empty string."""
 
 	try:
 		if sys.version_info > (3, 0):
@@ -1119,6 +1118,7 @@ def ip_addr_obj(raw_addr):
 		#else:
 		#	pass
 
+	full_ip_string = ''
 	ip_obj = None
 
 	if raw_addr_string != '' and not raw_addr_string.endswith(('.256', '.257', '.258', '.259', '.260')):		#raw_addr_string.find('.256') == -1
@@ -1138,20 +1138,11 @@ def ip_addr_obj(raw_addr):
 				else:
 					pass
 
-	return ip_obj
+	if ip_obj is not None:
+		full_ip_string = ip_obj.exploded
 
 
-
-def explode_ip(ip_obj):
-	"""Converts the input IP object to its exploded form (type "unicode" in python2) ready for printing.  If the IP/IP object is invalid, returns an empty string."""
-
-	if ip_obj is None:
-		ei_retval = ''
-	else:
-		ei_retval = ip_obj.exploded
-
-	return ei_retval
-
+	return full_ip_string
 
 
 def extract_len_string(len_encoded_string):
@@ -1247,7 +1238,7 @@ def ReportId(Type, CompressedIPAddr, Proto, State, Description, Warnings):
 	global SuspiciousIPs
 	global NewSuspiciousIPs
 
-	IPAddr = explode_ip(ip_addr_obj(CompressedIPAddr))
+	IPAddr = explode_ip(CompressedIPAddr)
 
 	Location = IPAddr + "," + Proto
 	Description = Description.replace('\n', '').replace('\r', '').replace(',', ' ')
@@ -3147,7 +3138,7 @@ def processpacket(p):
 	# http://standards.ieee.org/develop/regauth/ethertype/eth.txt
 	# http://www.cavebear.com/archive/cavebear/Ethernet/type.html
 		if SuspiciousIPs:
-			#We do not need to explode IPv4 addresses with explode_ip(ip_addr_obj(
+			#We do not need to explode IPv4 addresses with explode_ip(
 			if sIP in SuspiciousIPs or dIP in SuspiciousIPs:
 				SuspiciousPacket(p)
 	elif ((p.haslayer(CookedLinux) and p[CookedLinux].proto == 0x800) or (p.haslayer(Ether) and ((p[Ether].type == 0x0800) or (p[Ether].type == 0x8100)))):
@@ -3166,8 +3157,8 @@ def processpacket(p):
 		UnhandledPacket(p)
 ### IPv6
 	elif (p.haslayer(Ether) and p[Ether].type == 0x86DD) and p.haslayer(IPv6) and isinstance(p[IPv6], IPv6):
-		sIP = explode_ip(ip_addr_obj(str(p[IPv6].src)))
-		dIP = explode_ip(ip_addr_obj(str(p[IPv6].dst)))
+		sIP = explode_ip(str(p[IPv6].src))
+		dIP = explode_ip(str(p[IPv6].dst))
 
 		if sMAC == 'ff:ff:ff:ff:ff:ff':
 			ReportId("IP", sIP, "Broadcast_source_mac", "open", "Source mac address is broadcast", (['noncompliant']))
@@ -3293,7 +3284,7 @@ def processpacket(p):
 			#Layer names; see layers/inet6.py ( /opt/local/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/site-packages/scapy/layers/inet6.py ), hash named icmp6typescls
 ### IPv6/ICMPv6=58/DestUnreach=1
 			if p.getlayer(ICMPv6DestUnreach) and p.getlayer(IPerror6) and isinstance(p[IPerror6], IPerror6):   	#https://tools.ietf.org/html/rfc4443#section-3.1
-				exploded_OrigdIP = explode_ip(ip_addr_obj(p[IPerror6].dst))
+				exploded_OrigdIP = explode_ip(p[IPerror6].dst)
 				Code = p[ICMPv6DestUnreach].code
 ### IPv6/ICMPv6=58/DestUnreach=1/No route to dest=0	No route to destination; appears equivalent to IPv4 net unreachable
 				if Code == 0:
