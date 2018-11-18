@@ -23,16 +23,29 @@
 from __future__ import print_function
 
 import ipaddress
-from scapy.all import * #Required for Scapy 2.0 and above
+from scapy.all import *			#Required for Scapy 2.0 and above
 use_scapy_all = True
 
 
 #======== Variables ========
-passer_lib_version = '0.2'
-
+passer_lib_version = '0.3'
+Type = 0				#Indexes into the tuple used in passing data to the output handler
+IPAddr = 1
+Proto = 2
+State = 3
+Description = 4
+Warnings = 5
 
 
 #======== Support functions ========
+
+def ReturnLayers(rl_p):
+	"""Return the layers in this packet from outer to inner.  Sample use: list(ReturnLayers(p))"""
+	yield rl_p.name
+	while rl_p.payload:
+		rl_p = rl_p.payload
+		yield rl_p.name
+
 
 def explode_ip(raw_addr):
 	"""Converts the input IP address string into its exploded form (type "unicode" in python2) ready for printing.  The raw_addr string should already have leading and trailing whitespace removed before being handed to this function.  If it's not a valid IP address, returns an empty string."""
@@ -82,7 +95,9 @@ def generate_meta_from_packet(gmfp_pkt):
 	"""Creates a dictionary of packet fields that may be needed by other layers."""
 
 	#Default values.  Prefer '' to None so these can be used without having to use str() on everything.
-	meta_dict = {'sMAC': '', 'dMAC': '', 'cast_type': '', 'ip_class': '', 'ttl': '', 'sIP': '', 'dIP': '', 'sport': '', 'dport': ''}
+	meta_dict = {'sMAC': '', 'dMAC': '', 'cast_type': '', 'ip_class': '', 'ttl': '', 'sIP': '', 'dIP': '', 'sport': '', 'dport': '', 'pkt_layers': []}
+
+	meta_dict['pkt_layers'] = list(ReturnLayers(gmfp_pkt))
 
 	if gmfp_pkt.haslayer(Ether) and isinstance(gmfp_pkt[Ether], Ether):
 		meta_dict['sMAC'] = gmfp_pkt[Ether].src
@@ -136,3 +151,61 @@ def generate_meta_from_packet(gmfp_pkt):
 		meta_dict['cast_type'] = 'multicast'
 
 	return meta_dict
+
+
+
+
+#======== Extraction functions ========
+#In the original (single process) passer script, these are called as:
+#	ReportAll(ARP_extract(p, meta))
+#In the new mutiprocess passer script, these are called by the handler script for that layer, such as:
+#def ARP_handler(task_q, output_q):
+#...
+#	for statement in ARP_extract(p, meta):
+#		output_q.put(statement)
+
+
+def template_extract(p, meta):
+	"""Pull all statements from the template layer and return as a set of tuples."""
+
+	state_set = set([])
+
+	#if p[template].op == 2:
+	#	state_set.add(("MA", meta['sIP'], "Ethernet", p[template].hwsrc.upper(), "", tuple([])))
+
+	return state_set
+
+
+def ARP_extract(p, meta):
+	"""Pull all statements from the ARP layer and return as a set of tuples."""
+
+	state_set = set([])
+
+	if p[ARP].op == 2:		#"is-at"
+		state_set.add(("MA", meta['sIP'], "Ethernet", p[ARP].hwsrc.upper(), "", tuple([])))
+
+	return state_set
+
+
+def TCP_extract(p, meta):
+	"""Pull all statements from the TCP layer and return as a set of tuples."""
+
+	state_set = set([])
+
+	if (p[TCP].flags & 0x17) == 0x12:	#SYN/ACK
+		state_set.add(("TS", meta['sIP'], "TCP_" + meta['sport'], "listening", "", tuple([])))
+
+	return state_set
+
+
+def IP_extract(p, meta):
+	"""Pull all statements from the IP layer and return as a set of tuples."""
+
+	state_set = set([])
+
+	#if p[IP].op == 2:
+	#	state_set.add(("MA", meta['sIP'], "Ethernet", p[IP].hwsrc.upper(), "", tuple([])))
+
+	return state_set
+
+
