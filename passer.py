@@ -53,6 +53,16 @@ if use_scapy_all:
 else:
 	has_advanced_ntp_headers = False
 
+sys.path.insert(0, '.')			#Allows us to load from the current directory (There was one claim that we need to create an empty file __init__.py , but this does not appear to be required.)
+from passer_lib import *		#Support functions for this script
+try:
+	if not passer_lib_version:
+		sys.stderr.write('Unable to load passer_lib , exiting.\n')
+		quit()
+except NameError:
+	sys.stderr.write('Unable to load passer_lib , exiting.\n')
+	quit()
+
 
 #Following does not help with 'IndexError: Layer [Raw.load] not found'
 #from scapy.packet import Raw
@@ -655,7 +665,7 @@ task_layers = set(['BOOTP', 'Control message', 'DHCP options', 'DNS', 'GRE', 'HS
 trailer_layers = set(['Raw', 'Padding'])
 special_layers = set(['802.1Q', '802.3', 'ARP', 'EAPOL', 'Ethernet', 'LLC', 'Padding', 'Raw', 'SNAP', 'Spanning Tree Protocol'])
 
-passerVersion = "2.60"
+passerVersion = "2.61"
 
 
 #======== Functions ========
@@ -1097,52 +1107,6 @@ def LoadNmapServiceFP(ServiceFileName):
 	else:
 		Debug("Unable to find " + ServiceFileName)
 		return False
-
-
-
-def explode_ip(raw_addr):
-	"""Converts the input IP address string into its exploded form (type "unicode" in python2) ready for printing.  The raw_addr string should already have leading and trailing whitespace removed before being handed to this function.  If it's not a valid IP address, returns an empty string."""
-
-	try:
-		if sys.version_info > (3, 0):
-			raw_addr_string = str(raw_addr)
-		else:
-			raw_addr_string = unicode(raw_addr)
-	except UnicodeDecodeError:
-		raw_addr_string = ''
-
-		#if Devel:
-		#	Debug('Cannot convert:'
-		#	Debug(raw_addr)
-		#	raise
-		#else:
-		#	pass
-
-	full_ip_string = ''
-	ip_obj = None
-
-	if raw_addr_string != '' and not raw_addr_string.endswith(('.256', '.257', '.258', '.259', '.260')):		#raw_addr_string.find('.256') == -1
-		try:
-			ip_obj = ipaddress.ip_address(raw_addr_string)
-		except ValueError:
-			#See if it's in 2.6.0.0.9.0.0.0.5.3.0.1.B.7.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.1 or 260090005301B7000000000000000001 format
-			hex_string = raw_addr_string.replace('.', '')
-			colon_hex_string = hex_string[0:4] + ':' + hex_string[4:8] + ':' + hex_string[8:12] + ':' + hex_string[12:16] + ':' + hex_string[16:20] + ':' + hex_string[20:24] + ':' + hex_string[24:28] + ':' + hex_string[28:32]
-			try:
-				ip_obj = ipaddress.ip_address(colon_hex_string)
-			except ValueError:
-				if Devel:
-					Debug('IP Conversion problem with:')
-					Debug(raw_addr_string)
-					raise
-				else:
-					pass
-
-	if ip_obj is not None:
-		full_ip_string = ip_obj.exploded
-
-
-	return full_ip_string
 
 
 def extract_len_string(len_encoded_string):
@@ -1828,8 +1792,15 @@ def process_udp_dns_response(src_ip, dst_ip, src_service, src_port, p_dns, orig_
 
 
 
-def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcService, DstService, SrcClient, Payload, p):
+def process_udp_ports(meta, SrcService, DstService, SrcClient, Payload, p):
 	"""Process a UDP packet (ipv4 or ipv6)."""
+
+	#Transition variables
+	sIP = meta['sIP']
+	dIP = meta['dIP']
+	sport = meta['sport']
+	dport = meta['dport']
+
 
 	if dport in PolicyViolationUDPPorts:
 		ReportId("UC", sIP, "UDP_" + dport, "open", '', (['portpolicyviolation']))
@@ -1860,12 +1831,12 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 		#FIXME - copy over to mdns and ipv6
 	elif (sport == "5353") and (dport == "5353") and not p.haslayer(DNS):									#No dns layer for some reason
 		UnhandledPacket(p)
-	elif (dport == "5353") and ((pup_ttl == 1) or (pup_ttl == 2) or (pup_ttl == 255)):		#2 may not be rfc-legal, but I'm seeing it on the wire.
+	elif (dport == "5353") and ((meta['ttl'] == 1) or (meta['ttl'] == 2) or (meta['ttl'] == 255)):		#2 may not be rfc-legal, but I'm seeing it on the wire.
 		if dIP in ("224.0.0.251", "ff02::fb", "ff02:0000:0000:0000:0000:0000:0000:00fb"):
 			ReportId("UC", sIP, "UDP_" + dport, "open", "mdns/broadcastclient", ([]))
 		else:
 			ReportId("UC", sIP, "UDP_" + dport, "open", "mdns/client", ([]))
-	elif (sport != "5353") and (dport == "5353") and p.haslayer(DNS) and (isinstance(p[DNS], DNS)) and (p[DNS].qr == 0) and pup_ttl != 255:		#query from outside local lan; see https://tools.ietf.org/html/rfc6762 section 5.5
+	elif (sport != "5353") and (dport == "5353") and p.haslayer(DNS) and (isinstance(p[DNS], DNS)) and (p[DNS].qr == 0) and meta['ttl'] != 255:		#query from outside local lan; see https://tools.ietf.org/html/rfc6762 section 5.5
 		process_udp_dns_query(sIP, dIP, DstService, dport, p[DNS], p)
 		ReportId("UC", sIP, "UDP_" + dport, "open", "mdns/client", (['external']))
 	elif (sport == "5353") and (dport != "5353") and p.haslayer(DNS) and (isinstance(p[DNS], DNS)) and (p[DNS].qr == 1):					#response to outside local lan; see https://tools.ietf.org/html/rfc6762 section 5.5
@@ -1894,9 +1865,9 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 			warning_list = [udp_port_warnings[dport]]
 		ReportId("US", sIP, "UDP_" + sport, "open", str(PriUDPPortNames[sport]) + "/server", (warning_list))	#'portonlysignature'
 ### IP/UDPv4/bootp_dhcp=67
-	elif pup_ip_ver == 4 and (sport == "67") and (dport == "68"):		#Bootp/dhcp server talking to client
+	elif meta['ip_class'] == '4' and (sport == "67") and (dport == "68"):		#Bootp/dhcp server talking to client
 		ReportId("US", sIP, "UDP_" + sport, "open", "bootpordhcp/server", ([]))
-	elif pup_ip_ver == 4 and (sport == "68") and (dport == "67"):		#Bootp/dhcp client talking to server
+	elif meta['ip_class'] == '4' and (sport == "68") and (dport == "67"):		#Bootp/dhcp client talking to server
 		#FIXME - pull ID field out as a name to report
 		if sIP != "0.0.0.0":				#If the client is simply renewing an IP, remember it.
 			ReportId("UC", sIP, "UDP_" + dport, "open", "bootpordhcp/client", ([]))
@@ -1974,7 +1945,7 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 		ReportId("UC", sIP, "UDP_" + dport, "open", "epmap/client", ([]))
 ### IP/UDP/netbios-ns=137 query
 	elif dport == "137" and p.haslayer(NBNSQueryRequest):
-		if dMAC == "ff:ff:ff:ff:ff:ff":				#broadcast
+		if meta['dMAC'] == "ff:ff:ff:ff:ff:ff":				#broadcast
 			ReportId("UC", sIP, "UDP_" + dport, "open", "netbios-ns/broadcastclient", ([]))
 		elif Payload and (Payload.find('CKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') > -1):	#wildcard
 			ReportId("UC", sIP, "UDP_" + dport, "open", "netbios-ns/wildcardclient", (['amplification', 'spoofed']))
@@ -1999,10 +1970,7 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 	elif dport == "138" and p.haslayer(NBTDatagram):
 		netbios_hostname = p[NBTDatagram].SourceName.rstrip()
 		ReportId("NA", sIP, "PTR", netbios_hostname, "netbios-dgm", ([]))
-		if dMAC == "ff:ff:ff:ff:ff:ff":				#broadcast
-			ReportId("UC", sIP, "UDP_" + dport, "open", "netbios-dgm/broadcastclient", ([]))
-		else:
-			ReportId("UC", sIP, "UDP_" + dport, "open", "netbios-dgm/unicastclient", ([]))
+		ReportId("UC", sIP, "UDP_" + dport, "open", "netbios-dgm/" + meta['cast_type'] +  "client", ([]))
 ### IP/UDP/SNMP=161
 	elif dport == "161" and p.haslayer(SNMP) and (p.haslayer(SNMPget) or p.haslayer(SNMPbulk) or p.haslayer(SNMPvarbind)):
 		if ShowCredentials:
@@ -2048,12 +2016,12 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 	elif (dport == "523") and Payload and (Payload.find('DB2GETADDR') > -1):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "ibm-db2/clientscanner", (['scan']))
 ### IP/UDP/DHCPv6=547 request
-	elif pup_ip_ver == 6 and (sport == "546") and (dport == "547") and dIP in ("ff02::1:2", "ff02:0000:0000:0000:0000:0000:0001:0002"):
+	elif meta['ip_class'] == '6' and (sport == "546") and (dport == "547") and dIP in ("ff02::1:2", "ff02:0000:0000:0000:0000:0000:0001:0002"):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "UDP DHCPv6", ([]))
-	elif pup_ip_ver == 6 and (sport == "546") and (dport == "547"):	#dhcp request
+	elif meta['ip_class'] == '6' and (sport == "546") and (dport == "547"):	#dhcp request
 		ShowPacket(p, "IPv6/UDPv6/546-547-ff02::1:2 DHCP Request", HonorQuit)
 ### IP/UDP/DHCPv6=547 reply
-	elif pup_ip_ver == 6 and (sport == "547") and (dport == "546"):
+	elif meta['ip_class'] == '6' and (sport == "547") and (dport == "546"):
 		pass
 ### IP/UDP/SIP sipvicious scanner and other SIP clients.  https://www.nurango.ca/blog/sipvicious-the-not-so-friendly-scanner , http://www.hackingvoip.com/presentations/sample_chapter3_hacking_voip.pdf p54
 #We used to look for 'User-Agent: friendly-scanner', but this is for sipvicious only.  'Via: SIP/2.0/UDP ' is more general.
@@ -2100,14 +2068,14 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 	elif dport in ("1026", "1027", "1028") and Payload and ((Payload.find('Download Registry Update from:') > -1) or (Payload.find('CRITICAL ERROR MESSAGE! - REGISTRY DAMAGED AND CORRUPTED.') > -1) or (Payload.find('Your system registry is corrupted and needs to be cleaned immediately.') > -1) or (Payload.find('CRITICAL SYSTEM ERRORS') > -1)):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "winpopup/spamclient", (['malicious']))
 ### IP/UDP/sharemouse=1046 rc_iamhere sharemouse	https://www.hybrid-analysis.com/sample/ca51df55d9c938bf0dc2ecbc10b148ec5ab8d259f3ea97f719a1a498e128ee05?environmentId=100
-	elif sport == "1046" and dport == "1046" and (dMAC == "ff:ff:ff:ff:ff:ff") and Payload and Payload.startswith('rc_iamhere:6555:0:0:'):
+	elif sport == "1046" and dport == "1046" and (meta['dMAC'] == "ff:ff:ff:ff:ff:ff") and Payload and Payload.startswith('rc_iamhere:6555:0:0:'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "sharemouse/broadcastclient rc_iamhere sharemouse trojan", (['malicious']))
 		ReportId("NA", sIP, "NA", Payload[20:], "sharemouse trojan", (['malicious']))
 ### IP/UDP/udp1124=1124 used by printers
-	elif (dport == "1124") and (dMAC == "ff:ff:ff:ff:ff:ff") and Payload and (Payload.find('std-scan-discovery-all') > -1):
+	elif (dport == "1124") and (meta['dMAC'] == "ff:ff:ff:ff:ff:ff") and Payload and (Payload.find('std-scan-discovery-all') > -1):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "udp1124/broadcast", ([]))
 ### IP/UDP/search-agent=1234 used by stora NAS
-	elif (dport == "1234") and (dMAC == "ff:ff:ff:ff:ff:ff") and Payload and (Payload.find('Hello there. I am at ') > -1):
+	elif (dport == "1234") and (meta['dMAC'] == "ff:ff:ff:ff:ff:ff") and Payload and (Payload.find('Hello there. I am at ') > -1):
 		HostnameMatch = StoraHostnameMatch.search(Payload)
 		if (HostnameMatch is not None) and (len(HostnameMatch.groups()) >= 1):
 			ReportId("UC", sIP, "UDP_" + dport, "open", "stora_nas_scan/broadcast hostname: " + HostnameMatch.group(1), ([]))
@@ -2119,7 +2087,7 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 	elif dport == "1434" and Payload and Payload in (twobyte, twozero):		#https://portunus.net/2015/01/21/mc-sqlr-amplification/ .  Text refers to a one-byte \x02, but I've seen \x02\x00 as well.
 		ReportId("UC", sIP, "UDP_" + dport, "open", "mssql/client nmap ping scan", (['amplification', 'ddos', 'scan']))
 ### IP/UDP/kdeconnect=1716
-	elif sport == "1716" and dport == "1716" and (dMAC == "ff:ff:ff:ff:ff:ff") and Payload and (Payload.find('kdeconnect.') > -1):
+	elif sport == "1716" and dport == "1716" and (meta['dMAC'] == "ff:ff:ff:ff:ff:ff") and Payload and (Payload.find('kdeconnect.') > -1):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "kdeconnect/broadcast", ([]))
 	elif sport == "1716" and dport == "1716" and Payload and (Payload.find('kdeconnect.') > -1):
 		ReportId("US", sIP, "UDP_" + sport, "open", 'kdeconnect/server', ([]))
@@ -2153,14 +2121,14 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 	elif (dport == "1900") and dIP in ("239.255.255.250", "ff02:0000:0000:0000:0000:0000:0000:000c", "ff05:0000:0000:0000:0000:0000:0000:000c", "ff08:0000:0000:0000:0000:0000:0000:000c", "ff0e:0000:0000:0000:0000:0000:0000:000c"):		#ssdp
 		ShowPacket(p, "IP/UDP/1900-multicast SSDP unknown method", HonorQuit)
 ### IP/UDP/hsrp=1985	https://en.wikipedia.org/wiki/Hot_Standby_Router_Protocol	https://tools.ietf.org/html/rfc2281
-	elif sport in ("1985", "2029") and dport in ("1985", "2029") and pup_ttl == 1 and dIP in ('224.0.0.2', '224.0.0.102', 'ff02::66', 'ff02:0000:0000:0000:0000:0000:0000:0066'):
+	elif sport in ("1985", "2029") and dport in ("1985", "2029") and meta['ttl'] == 1 and dIP in ('224.0.0.2', '224.0.0.102', 'ff02::66', 'ff02:0000:0000:0000:0000:0000:0000:0066'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "hsrp/multicastclient", ([]))
 		ReportId("RO", sIP, "HSRP", "router", "", ([]))
 ### IP/UDP/ethernetip=2222	http://kazanets.narod.ru/files/Acro_ethernetIP_747a.pdf , see "CIP Encapsulation Message"
 	elif (dport == "2222") and Payload and Payload.startswith(ethernetip_list_identity):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "ethernetip/clientscanner", (['scan']))
 ### IP/UDP/msopid=2223	http://www.crufty.net/sjg/blog/osx-and-office-do-not-mix.htm
-	elif (dport == "2223") and ((dMAC == "ff:ff:ff:ff:ff:ff") or dIP == "255.255.255.255") and Payload and Payload.startswith('MSOPID'):
+	elif (dport == "2223") and (meta['cast_type'] == "broadcast") and Payload and Payload.startswith('MSOPID'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "msopid/clientscanner", (['scan']))
 ### IP/UDP/digiman=2362
 	elif (dport == "2362") and Payload and Payload.startswith('DIGI'):
@@ -2172,7 +2140,7 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 	elif (dport == "3235") and Payload and Payload.startswith('ANT-SEARCH MDAP/1.1'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "mdap-port/client", ([]))
 ### IP/UDP/enpc=3289
-	elif (dport == "3289") and (dMAC == "ff:ff:ff:ff:ff:ff"):
+	elif (dport == "3289") and (meta['dMAC'] == "ff:ff:ff:ff:ff:ff"):
 		if Payload and (Payload.startswith('EPSON')):
 			ReportId("UC", sIP, "UDP_" + dport, "open", "enpc/broadcast", ([]))
 		else:
@@ -2188,7 +2156,7 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 		else:
 			ReportId("UC", sIP, "UDP_" + dport, "open", "upnp-discovery/client", ([]))
 ### IP/UDP/bfd-control=3784		https://tools.ietf.org/html/rfc5881
-	elif (dport == "3784") and (pup_ttl == 255):
+	elif (dport == "3784") and (meta['ttl'] == 255):
 		#FIXME - add check that sport must be between 49152 and 65535
 		ReportId("UC", sIP, "UDP_" + dport, "open", "bfd-control/client", ([]))
 ### IP/UDP/xpl=3865
@@ -2207,10 +2175,7 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 		ReportId("US", sIP, "UDP_" + sport, "open", "esp/server", (['tunnel']))
 ### IP/UDP/drobo=5002 used by drobo NAS
 	elif (dport == "5002") and Payload and Payload.startswith('DRINETTM'):
-		if dMAC == "ff:ff:ff:ff:ff:ff":
-			ReportId("UC", sIP, "UDP_" + dport, "open", "drobo_nas_scan/broadcast", ([]))
-		else:
-			ReportId("UC", sIP, "UDP_" + dport, "open", "drobo_nas_scan/client", ([]))
+			ReportId("UC", sIP, "UDP_" + dport, "open", "drobo_nas_scan/" + meta['cast_type'] + "client", ([]))
 ### IP/UDP/vonage
 	elif (sport == "5061") and (dport == "5061") and (dIP in vonage_sip_servers):		#Vonage SIP client
 		if Payload and (Payload.find('.vonage.net:5061 SIP/2.0') > -1):
@@ -2235,16 +2200,16 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 		else:
 			ShowPacket(p, "IPv4/UDPv4/5351 nat-pmp unknown payload", HonorQuit)
 ### IP/UDP/llmnr=5355 query
-	elif (dport == "5355") and dIP in ("224.0.0.252", "ff02::1:3", "ff02:0000:0000:0000:0000:0000:0001:0003") and (pup_ttl in (1, 255)) and p.haslayer(LLMNRQuery) and (p[LLMNRQuery].qr == 0): #llmnr (link-local multicast node resolution)
+	elif (dport == "5355") and dIP in ("224.0.0.252", "ff02::1:3", "ff02:0000:0000:0000:0000:0000:0001:0003") and (meta['ttl'] in (1, 255)) and p.haslayer(LLMNRQuery) and (p[LLMNRQuery].qr == 0): #llmnr (link-local multicast node resolution)
 		UnhandledPacket(p)
 ### IP/UDP/llmnr=5355 response
-	elif (dport == "5355") and dIP in ("224.0.0.252", "ff02::1:3", "ff02:0000:0000:0000:0000:0000:0001:0003") and (pup_ttl in (1, 255)): #llmnr (link-local multicast node resolution)
+	elif (dport == "5355") and dIP in ("224.0.0.252", "ff02::1:3", "ff02:0000:0000:0000:0000:0000:0001:0003") and (meta['ttl'] in (1, 255)): #llmnr (link-local multicast node resolution)
 		ShowPacket(p, "IP/UDP/5355-224.0.0.252,ff02::1:3 llmnr not query", HonorQuit)
 		#Can we pass this off to PUDR?
 	elif dport == "5355":							#unicast fe80->fe80 llmnr (link-local multicast node resolution)
 		ShowPacket(p, "IP/UDP/5355 unicast llmnr not to 224.0.0.252,1:3", HonorQuit)
 ### IP/UDP/corosync=5405 used by corosync
-	elif (dport == "5405") and (dMAC == "ff:ff:ff:ff:ff:ff"):
+	elif (dport == "5405") and (meta['dMAC'] == "ff:ff:ff:ff:ff:ff"):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "corosync/broadcast", ([]))
 ### IP/UDP/pcanywherestat=5632 client
 	elif (dport == "5632") and Payload and (Payload.find('NQ') > -1):
@@ -2267,16 +2232,16 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 	elif (dport == "8000") and Payload and Payload == 'ARE_YOU_KISS_PCLINK_SERVER?':
 		ReportId("UC", sIP, "UDP_" + dport, "open", "kissdvd/client", (['scan']))
 ### IP/UDP/canon-bjnp2=8610
-	elif (dport == "8610") and dMAC in ("ff:ff:ff:ff:ff:ff", "33:33:00:00:00:01") and Payload and (Payload.startswith('MFNP')):
-		ReportId("UC", sIP, "UDP_" + dport, "open", "udp8610/broadcast", ([]))
+	elif (dport == "8610") and meta['cast_type'] and Payload and (Payload.startswith('MFNP')):
+		ReportId("UC", sIP, "UDP_" + dport, "open", "udp8610/" + meta['cast_type'], ([]))
 ### IP/UDP/canon-bjnp2=8612		https://support.usa.canon.com/kb/index?page=content&id=ART109227
-	elif dport in ("8612", "8613") and (dMAC == "ff:ff:ff:ff:ff:ff" or dIP == "255.255.255.255") and Payload and (Payload.startswith('BJNP')):
-		ReportId("UC", sIP, "UDP_" + dport, "open", "canon-bjnp2/broadcast", ([]))
+	elif dport in ("8612", "8613") and meta['cast_type'] and Payload and (Payload.startswith('BJNP')):
+		ReportId("UC", sIP, "UDP_" + dport, "open", "canon-bjnp2/" + meta['cast_type'], ([]))
 	elif dport in ("8612", "8613") and dIP in ('ff02::1', 'ff02:0000:0000:0000:0000:0000:0000:0001') and Payload and (Payload.startswith('BJNP')):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "canon-bjnp2/client", ([]))
 ### IP/UDP/canon-bjnb-bnjb=8612
-	elif (dport == "8612") and (dIP == "224.0.0.1" or dIP.endswith('.255') or dMAC == "ff:ff:ff:ff:ff:ff") and Payload and (Payload.startswith(('BNJB', 'BJNB'))):
-		ReportId("UC", sIP, "UDP_" + dport, "open", "canon-bjnb-bnjb/broadcast", ([]))
+	elif (dport == "8612") and meta['cast_type'] and Payload and (Payload.startswith(('BNJB', 'BJNB'))):
+		ReportId("UC", sIP, "UDP_" + dport, "open", "canon-bjnb-bnjb/" + meta['cast_type'], ([]))
 ### IP/UDP/itunesdiscovery=8765
 	elif dport == "8765":									#XPL, http://wiki.xplproject.org.uk/index.php/Main_Page
 		ReportId("UC", sIP, "UDP_" + dport, "open", "itunesdiscovery/broadcast", ([]))		#'portonlysignature'
@@ -2309,9 +2274,9 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 	elif dport in zmap_host_www_ports and (Payload == 'GET / HTTP/1.1\r\nHost: www\r\n\r\n'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", 'zmapscanner/client', (['scan']))
 ### IP/UDP/makerbotdiscovery=12307		https://github.com/gryphius/mini-makerbot-hacking/blob/master/doc/makerbotmini.md
-	elif (sport == "12309") and (dport == "12307") and (dMAC == "ff:ff:ff:ff:ff:ff"):
+	elif (sport == "12309") and (dport == "12307") and meta['cast_type']:
 		if Payload and (Payload.startswith('{"command": "broadcast"')):
-			ReportId("UC", sIP, "UDP_" + dport, "open", "makerbotdiscovery/broadcast", ([]))
+			ReportId("UC", sIP, "UDP_" + dport, "open", "makerbotdiscovery/" + meta['cast_type'], ([]))
 ### IP/UDP/12314
 	elif dport == "12314" and Payload and Payload.startswith(fournulls):					#Actually,lots more nulls than 4.
 		ReportId("UC", sIP, "UDP_" + dport, "open", 'udp12314/client', (['scan']))
@@ -2331,8 +2296,8 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 	elif sport in meet_ports:
 		ReportId("US", sIP, "UDP_" + sport, "open", "googlemeet/server missing sIP:" + sIP, ([]))		#'portonlysignature'
 ### IP/UDP/develo=19375	https://flambda.de/2013/06/18/audioextender/	https://ubuntuforums.org/showthread.php?t=1942539	https://www2.devolo.com/products/dLAN-Powerline-1485-Mbps/dLAN-Wireless-extender/data/Data-sheet-dLAN-Wireless-extender-Starter-Kit-com.pdf
-	elif dport == "19375" and (dMAC == "ff:ff:ff:ff:ff:ff") and Payload.startswith('whoisthere'):
-		ReportId("UC", sIP, "UDP_" + dport, "open", "develo/broadcastclient", ([]))				#Note, payload is "whoisthere\x00' + str(ip.address) + '\x00' + str(subnet_mask) + '\x00\x001\x00'
+	elif dport == "19375" and meta['cast_type'] and Payload.startswith('whoisthere'):
+		ReportId("UC", sIP, "UDP_" + dport, "open", "develo/" + meta['cast_type'] + "client", ([]))		#Note, payload is "whoisthere\x00' + str(ip.address) + '\x00' + str(subnet_mask) + '\x00\x001\x00'
 ### IP/UDP/skype=all over the place
 	elif (dport in skype_ports) and (dIP in skype_hosts):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "skype/client", ([]))
@@ -2430,25 +2395,22 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 	elif dport == "53413":							#To limit this signature to just shellcode, add the following tests to this line:   and Payload and (Payload.find('; chmod 777 ') > -1)
 		ReportId("UC", sIP, "UDP_" + dport, "open", "netis-backdoor-53413/client", (['malicious']))	#'portonlysignature'
 ### IP/UDP/logitech-arx=54915		http://support.moonpoint.com/network/udp/port_54915/
-	elif sport == "54915" and dport == "54915" and (dMAC == "ff:ff:ff:ff:ff:ff"):
-		ReportId("UC", sIP, "UDP_" + dport, "open", "logitech-arx/broadcastclient", ([]))			#'portonlysignature'
+	elif sport == "54915" and dport == "54915" and meta['cast_type']:
+		ReportId("UC", sIP, "UDP_" + dport, "open", "logitech-arx/" + meta['cast_type'] + "client", ([]))	#'portonlysignature'
 ### IP/UDP/brother-announce=54925 and 54926 used by brother printers		http://ww2.chemistry.gatech.edu/software/Drivers/Brother/MFC-9840CDW/document/ug/usa/html/sug/index.html?page=chapter7.html
-	elif (dport in ("54925", "54926")) and dIP in ("255.255.255.255", "ff02::1", "ff02:0000:0000:0000:0000:0000:0000:0001") and (dMAC in ("ff:ff:ff:ff:ff:ff", "33:33:00:00:00:01")) and Payload and (Payload.find('NODENAME=') > -1):
+	elif (dport in ("54925", "54926")) and meta['cast_type'] and Payload and (Payload.find('NODENAME=') > -1):
 		BrotherMatch = BrotherAnnounceMatch.search(Payload)
 		if (BrotherMatch is not None) and (len(BrotherMatch.groups()) >= 4):
 			#In the packets I've seen, groups 1, 2, and 3 are ip addresses (1 ipv4 and 2 ipv6).  Group 4 is a nodename ("BRWF" + uppercase mac address, no colons)
-			ReportId("UC", sIP, "UDP_" + dport, "open", "brother-announce/broadcast nodename: " + BrotherMatch.group(4), ([]))
-			ReportId("UC", BrotherMatch.group(1), "UDP_" + dport, "open", "brother-announce/broadcast nodename: " + BrotherMatch.group(4), ([]))
-			ReportId("UC", BrotherMatch.group(2), "UDP_" + dport, "open", "brother-announce/broadcast nodename: " + BrotherMatch.group(4), ([]))
-			ReportId("UC", BrotherMatch.group(3), "UDP_" + dport, "open", "brother-announce/broadcast nodename: " + BrotherMatch.group(4), ([]))
+			ReportId("UC", sIP, "UDP_" + dport, "open", "brother-announce/" + meta['cast_type'] + " nodename: " + BrotherMatch.group(4), ([]))
+			ReportId("UC", BrotherMatch.group(1), "UDP_" + dport, "open", "brother-announce/" + meta['cast_type'] + " nodename: " + BrotherMatch.group(4), ([]))
+			ReportId("UC", BrotherMatch.group(2), "UDP_" + dport, "open", "brother-announce/" + meta['cast_type'] + " nodename: " + BrotherMatch.group(4), ([]))
+			ReportId("UC", BrotherMatch.group(3), "UDP_" + dport, "open", "brother-announce/" + meta['cast_type'] + " nodename: " + BrotherMatch.group(4), ([]))
 		else:
-			ReportId("UC", sIP, "UDP_" + dport, "open", "brother-announce/broadcast", ([]))
+			ReportId("UC", sIP, "UDP_" + dport, "open", "brother-announce/" + meta['cast_type'], ([]))
 ### IP/UDP/spotify-broadcast=57621		https://mrlithium.blogspot.com/2011/10/spotify-and-opting-out-of-spotify-peer.html
 	elif (dport == "57621") and Payload and (Payload.startswith('SpotUdp')):
-		if dMAC == "ff:ff:ff:ff:ff:ff":
-			ReportId("UC", sIP, "UDP_" + dport, "open", "spotify/broadcastclient", ([]))
-		else:
-			ReportId("UC", sIP, "UDP_" + dport, "open", "spotify/client", ([]))
+		ReportId("UC", sIP, "UDP_" + dport, "open", "spotify/" + meta['cast_type'] + "client", ([]))
 ### IP/UDP/probes with empty payloads
 	elif dport in empty_payload_ports and Payload == '':
 		ReportId("UC", sIP, "UDP_" + dport, "open", "empty-payload/client", ([]))
@@ -2480,7 +2442,7 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 			warning_list = [udp_port_warnings[dport]]
 		UnhandledPacket(p)
 		ReportId("US", sIP, "UDP_" + sport, "open", str(SecUDPPortNames[sport]) + "/server", (warning_list))	#'portonlysignature'
-	elif pup_ip_ver == 4 and p[IP].frag > 0:
+	elif meta['ip_class'] == '4' and p[IP].frag > 0:
 		UnhandledPacket(p)
 	elif (sport == "53") and not p.haslayer(DNS):									#source port 53, but no parsed DNS layer.  Seen this in large packets with Raw immediately following UDP.
 		UnhandledPacket(p)
@@ -2497,12 +2459,11 @@ def process_udp_ports(pup_ip_ver, dMAC, sIP, dIP, pup_ttl, sport, dport, SrcServ
 	elif sIP in known_scan_ips:
 		ReportId("UC", sIP, "UDP_" + dport, "open", "udp/clientscanner known scanner", (['scan']))
 
-	elif dMAC == "ff:ff:ff:ff:ff:ff" and dport in broadcast_udp_ports:
+	elif meta['dMAC'] == "ff:ff:ff:ff:ff:ff" and dport in broadcast_udp_ports:
 		ReportId("UC", sIP, "UDP_" + dport, "open", "udp" + dport + "/broadcastclient", ([]))			#'portonlysignature'
 	elif sport in broadcast_udp_ports:
 		ReportId("US", sIP, "UDP_" + sport, "open", 'udp' + sport + '/server', ([]))				#'portonlysignature'
-	#FIXME alert on sMAC == allfs
-	elif dMAC == "ff:ff:ff:ff:ff:ff":
+	elif meta['dMAC'] == "ff:ff:ff:ff:ff:ff":
 		ShowPacket(p, "IP/UDP/unhandled broadcast", HonorQuit)
 	else:
 		ShowPacket(p, "IP/UDP/unhandled port", HonorQuit)
@@ -2540,8 +2501,6 @@ def processpacket(p):
 				ShowPacket(p, "Unknown layer list", HonorQuit)
 				quit()
 
-	dest_type = ''			#unicast.  This is placed in front of "client", so we leave it blank for unicast
-
 	this_stamp, this_string = packet_timestamps(p)
 	if not start_stamp or this_stamp < start_stamp:
 		start_stamp = this_stamp
@@ -2550,19 +2509,19 @@ def processpacket(p):
 		end_stamp = this_stamp
 		end_string = this_string
 
-#Extract dest mac IF this is an ethernet/ipv4 or ethernet/ipv6 packet
-	if (p.haslayer(Ether) and (isinstance(p[Ether], Ether)) and ((p[Ether].type == 0x0800) or (p[Ether].type == 0x8100) or (p[Ether].type == 0x86DD))):
-		sMAC = p[Ether].src
-		dMAC = p[Ether].dst
+	meta = generate_meta_from_packet(p)
+	#Convert:
+	#sMac -> meta['sMAC']
+	#dMac -> meta['dMAC']
+	#meta['cast_type']
+	#pp_ttl -> meta['ttl']
 
-		if dMAC == 'ff:ff:ff:ff:ff:ff':
-			dest_type = 'broadcast'
-		elif dMAC.startswith(('01:00:5e:', '33:33:')) or dMAC[1] in ('1', '3', '5', '7', '9', 'b', 'd', 'f'):		#https://tools.ietf.org/html/rfc7042 .  List of "odd" numbered nibbles are where the low order bit of byte 1 is set to 1.
-			dest_type = 'multicast'
-	else:
-		#We mostly use the src and dst macs to check for broadcasts/multicasts.  If we're not on ethernet, leave it blank.
-		sMAC = ''
-		dMAC = ''
+	#Transitional variables
+	sIP = meta['sIP']
+	dIP = meta['dIP']
+	sport = meta['sport']
+	dport = meta['dport']
+
 
 ### Spanning Tree Protocol
 	if isinstance(p, Dot3) and p.haslayer(LLC) and isinstance(p[LLC], LLC):
@@ -2596,20 +2555,12 @@ def processpacket(p):
 		UnhandledPacket(p)
 ### IPv4
 	elif ((p.haslayer(CookedLinux) and p[CookedLinux].proto == 0x800) or (p.haslayer(Ether) and ((p[Ether].type == 0x0800) or (p[Ether].type == 0x8100))) or not p.haslayer(Ether)) and p.haslayer(IP) and isinstance(p[IP], IP):
-		sIP = str(p[IP].src)
-		dIP = str(p[IP].dst)
 
-		if sMAC == 'ff:ff:ff:ff:ff:ff':
+		if meta['sMAC'] == 'ff:ff:ff:ff:ff:ff':
 			ReportId("IP", sIP, "Broadcast_source_mac", "open", "Source mac address is broadcast", (['noncompliant']))
 
-		if dIP == '255.255.255.255':
-			dest_type = 'broadcast'
-		elif dIP.startswith(('224.', '225.', '226.', '227.', '228.', '229.', '230.', '231.', '232.', '233.', '234.', '235.', '236.', '237.', '238.', '239.')):
-			dest_type = 'multicast'
-
-		pp_ttl = p[IP].ttl
 		#Best to get these from arps instead; if we get them from here, we get router macs for foreign addresses.
-		#ReportId("MA", sIP, "Ethernet", sMAC, '', ([]))
+		#ReportId("MA", sIP, "Ethernet", meta['sMAC'], '', ([]))
 		#ReportId("MA", dIP, "Ethernet", dMAC, '', ([]))
 
 		if p.getlayer(Raw):
@@ -2632,18 +2583,18 @@ def processpacket(p):
 			elif (Type == 3) and p.haslayer(IPerror) and isinstance(p[IPerror], IPerror):	#Unreachable, check that we have an actual embedded packet
 				if type(p[IPerror]) != IPerror:
 					ShowPacket(p, "IPv4/ICMPv4/Unreachable=type3/Not IPError: " + str(type(p[IPerror])), HonorQuit)
-				OrigdIP = p[IPerror].dst
+
 				if Code == 0:					#Net unreachable
-					ReportId("IP", OrigdIP, "IP", "dead", 'net unreachable', ([]))
+					ReportId("IP", meta['OrigdIP'], "IP", "dead", 'net unreachable', ([]))
 					ReportId("RO", sIP, "NetUn", "router", "client_ip=" + dIP, ([]))
 				elif Code == 1:					#Host unreachable
-					ReportId("IP", OrigdIP, "IP", "dead", 'host unreachable', ([]))
+					ReportId("IP", meta['OrigdIP'], "IP", "dead", 'host unreachable', ([]))
 					ReportId("RO", sIP, "HostUn", "router", "client_ip=" + dIP, ([]))
 				elif Code == 2:					#Protocol unreachable
 					ReportId("RO", sIP, "ProtoUn", "router", "client_ip=" + dIP, ([]))
 				#Following codes are Port unreachable, Network/Host Administratively Prohibited, Network/Host unreachable for TOS, Communication Administratively prohibited
 				elif Code in (3, 9, 10, 11, 12, 13) and (p[IPerror].proto == 17) and p.haslayer(UDPerror) and isinstance(p[UDPerror], UDPerror):	#Port unreachable and embedded protocol = 17, UDP, as it should be
-					DNSServerLoc = p[IPerror].src + ",UDP_53"
+					DNSServerLoc = meta['OrigsIP'] + ",UDP_53"
 					if (p[UDPerror].sport == 53) and (DNSServerLoc in ManualServerDescription) and (ManualServerDescription[DNSServerLoc] == "dns/server"):
 						#If orig packet coming from 53 and coming from a dns server, don't do anything (closed port on client is a common effect)
 						#Don't waste time on port unreachables going back to a dns server; too common, and ephemeral anyways.
@@ -2651,25 +2602,25 @@ def processpacket(p):
 					else:
 						#If orig packet coming from something other than 53, or coming from 53 and NOT coming from a dns server, log as closed
 						OrigDPort = str(p[UDPerror].dport)
-						ReportId("US", OrigdIP, "UDP_" + OrigDPort, "closed", "port unreachable", ([]))
+						ReportId("US", meta['OrigdIP'], "UDP_" + OrigDPort, "closed", "port unreachable", ([]))
 
 						if include_udp_errors_in_closed_ports:
-							#Prober is dIP.  Probed port is: OrigdIP + ",UDP_" + OrigDPort
+							#Prober is dIP.  Probed port is: meta['OrigdIP'] + ",UDP_" + OrigDPort
 							if dIP not in ClosedPortsReceived:
 								ClosedPortsReceived[dIP] = set()
-							ClosedPortsReceived[dIP].add(OrigdIP + ",UDP_" + OrigDPort)
+							ClosedPortsReceived[dIP].add(meta['OrigdIP'] + ",UDP_" + OrigDPort)
 							if len(ClosedPortsReceived[dIP]) >= min_closed_ports_for_scanner:
 								ReportId("IP", dIP, "IP", "suspicious", 'Scanned closed ports.', (['scan']))
 				elif Code in (3, 9, 10, 11, 12, 13) and (p[IPerror].proto == 6) and isinstance(p[TCPerror], TCPerror):	#Port unreachable and embedded protocol = 6, TCP, which it shouldn't.  May be the same firewall providing the TCP FR's
 					#Now we _could_ claim the machine sending the error is a linux firewall.
 					OrigDPort = str(p[TCPerror].dport)
-					Service = OrigdIP + ",TCP_" + OrigDPort
+					Service = meta['OrigdIP'] + ",TCP_" + OrigDPort
 					if Service in SynSentToTCPService and ((Service not in LiveTCPService) or LiveTCPService[Service]):
 						LiveTCPService[Service] = False
-						ReportId("TS", OrigdIP, "TCP_" + OrigDPort, "closed", '', ([]))
+						ReportId("TS", meta['OrigdIP'], "TCP_" + OrigDPort, "closed", '', ([]))
 
 					if Service in SynSentToTCPService:
-						#Prober is dIP.  Probed port is Service (= OrigdIP + ",TCP_" + OrigDPort)
+						#Prober is dIP.  Probed port is Service (= meta['OrigdIP'] + ",TCP_" + OrigDPort)
 						if dIP not in ClosedPortsReceived:
 							ClosedPortsReceived[dIP] = set()
 						ClosedPortsReceived[dIP].add(Service)
@@ -2683,9 +2634,9 @@ def processpacket(p):
 				elif Code == 4:					#Fragmentation needed
 					pass
 				elif Code == 6:					#Net unknown
-					ReportId("IP", OrigdIP, "IP", "dead", 'net unknown', ([]))
+					ReportId("IP", meta['OrigdIP'], "IP", "dead", 'net unknown', ([]))
 				elif Code == 7:					#Host unknown
-					ReportId("IP", OrigdIP, "IP", "dead", 'host unknown', ([]))
+					ReportId("IP", meta['OrigdIP'], "IP", "dead", 'host unknown', ([]))
 				elif Code == 9:					#Network Administratively Prohibited
 					pass					#Can't tell much from this type of traffic.  Possibly list as firewall?
 				elif Code == 10:				#Host Administratively Prohibited
@@ -2748,7 +2699,7 @@ def processpacket(p):
 			if (sIP == dIP) and (sport == dport):
 				ReportId("TS", sIP, "TCP_" + sport, "attack", 'land attack IP address spoofed', (['malicious', 'spoofed']))
 
-			#print p[IP].src + ":" + sport + " -> ", p[IP].dst + ":" + dport,
+			#print meta['sIP'] + ":" + meta['sport'] + " -> ", meta['dIP'] + ":" + meta['dport'],
 			if (p[TCP].flags & 0x17) == 0x12:	#SYN/ACK (RST and FIN off)
 				CliService = dIP + ",TCP_" + sport
 				if CliService not in SynAckSentToTCPClient:
@@ -3049,7 +3000,7 @@ def processpacket(p):
 			DstService = dIP + ",UDP_" + dport
 			SrcClient = sIP + ",UDP_" + dport
 
-			process_udp_ports(4, dMAC, sIP, dIP, pp_ttl, sport, dport, SrcService, DstService, SrcClient, Payload, p)
+			process_udp_ports(meta, SrcService, DstService, SrcClient, Payload, p)
 
 ### IPv4/UDPv4, probably truncated/fragmented
 		elif p[IP].proto == 17:					#This is the case where the protocol is listed as 17, but there's no complete UDP header.  Quite likely a 2nd or future fragment.
@@ -3130,7 +3081,7 @@ def processpacket(p):
 			UnhandledPacket(p)
 		else:		#http://www.iana.org/assignments/protocol-numbers
 			#Look up protocol in /etc/protocols
-			ShowPacket(p, "Other IP protocol (" + str(p[IP].src) + "->" + str(p[IP].dst) + "): " + str(p[IP].proto), HonorQuit)
+			ShowPacket(p, "Other IP protocol (" + meta['sIP'] + "->" + meta['dIP'] + "): " + str(p[IP].proto), HonorQuit)
 	#Look up other ethernet types in:
 	# http://en.wikipedia.org/wiki/EtherType
 	# /etc/ethertypes
@@ -3157,16 +3108,10 @@ def processpacket(p):
 		UnhandledPacket(p)
 ### IPv6
 	elif (p.haslayer(Ether) and p[Ether].type == 0x86DD) and p.haslayer(IPv6) and isinstance(p[IPv6], IPv6):
-		sIP = explode_ip(str(p[IPv6].src))
 		dIP = explode_ip(str(p[IPv6].dst))
 
-		if sMAC == 'ff:ff:ff:ff:ff:ff':
+		if meta['sMAC'] == 'ff:ff:ff:ff:ff:ff':
 			ReportId("IP", sIP, "Broadcast_source_mac", "open", "Source mac address is broadcast", (['noncompliant']))
-
-		if dIP.startswith('ff'):
-			dest_type = 'multicast'
-
-		pp_ttl = p[IPv6].hlim
 
 		if p.getlayer(Raw):
 			Payload = p.getlayer(Raw).load
@@ -3174,7 +3119,7 @@ def processpacket(p):
 			Payload = ""
 
 ### IPv6/IPv6ExtHdrHopByHop=0  Hop-by-hop option header
-		if p[IPv6].nh == 0 and pp_ttl == 1 and p.getlayer(IPv6ExtHdrHopByHop) and p[IPv6ExtHdrHopByHop].nh == 58 and (p.haslayer(ICMPv6MLQuery) or p.haslayer(ICMPv6MLReport) or p.haslayer(ICMPv6MLDone)):	#0 is Hop-by-hop options
+		if p[IPv6].nh == 0 and meta['ttl'] == 1 and p.getlayer(IPv6ExtHdrHopByHop) and p[IPv6ExtHdrHopByHop].nh == 58 and (p.haslayer(ICMPv6MLQuery) or p.haslayer(ICMPv6MLReport) or p.haslayer(ICMPv6MLDone)):	#0 is Hop-by-hop options
 			UnhandledPacket(p)
 			#FIXME - try to extract Multicast info later.
 			#if p[ICMPv6MLQuery].type == 130:		#MLD Query
@@ -3245,7 +3190,7 @@ def processpacket(p):
 						ReportId("IP", dIP, "IP", "suspicious", 'Scanned closed ports.', (['scan']))
 			elif (p[TCP].flags & 0x17) == 0x10:	#ACK		(RST, SYN, and FIN off)
 				pass
-				#print p[IPv6].src + ":" + sport + " -> ", p[IPv6].dst + ":" + dport
+				#print meta['sIP'] + ":" + sport + " -> ", meta['dIP'] + ":" + dport
 			elif (p[TCP].flags & 0x17) == 0x05:	#RST/FIN (ACK and SYN off)
 				UnhandledPacket(p)
 				ReportId("TC", sIP, "TCP_" + dport, "open", "TCP RST/FIN flag scanner", (['noncompliant', 'scan']))
@@ -3273,7 +3218,7 @@ def processpacket(p):
 			DstService = dIP + ",UDP_" + dport
 			SrcClient = sIP + ",UDP_" + dport
 
-			process_udp_ports(6, dMAC, sIP, dIP, pp_ttl, sport, dport, SrcService, DstService, SrcClient, Payload, p)
+			process_udp_ports(meta, SrcService, DstService, SrcClient, Payload, p)
 
 ### IPv6/Fragmentation=44
 		elif p[IPv6].nh == 44: 		#Fragment header.  Not worth trying to extract info from following headers.
@@ -3284,11 +3229,10 @@ def processpacket(p):
 			#Layer names; see layers/inet6.py ( /opt/local/Library/Frameworks/Python.framework/Versions/2.7/lib/python2.7/site-packages/scapy/layers/inet6.py ), hash named icmp6typescls
 ### IPv6/ICMPv6=58/DestUnreach=1
 			if p.getlayer(ICMPv6DestUnreach) and p.getlayer(IPerror6) and isinstance(p[IPerror6], IPerror6):   	#https://tools.ietf.org/html/rfc4443#section-3.1
-				exploded_OrigdIP = explode_ip(p[IPerror6].dst)
 				Code = p[ICMPv6DestUnreach].code
 ### IPv6/ICMPv6=58/DestUnreach=1/No route to dest=0	No route to destination; appears equivalent to IPv4 net unreachable
 				if Code == 0:
-					ReportId("IP", exploded_OrigdIP, "IP", "dead", 'net unreachable', ([]))
+					ReportId("IP", meta['OrigdIP'], "IP", "dead", 'net unreachable', ([]))
 					ReportId("RO", sIP, "NetUn", "router", "client_ip=" + dIP, ([]))
 ### IPv6/ICMPv6=58/DestUnreach=1/AdminProhib=1		Communication with destination administratively prohibited (blocked by firewall)
 				elif Code == 1:
@@ -3298,11 +3242,11 @@ def processpacket(p):
 					pass
 ### IPv6/ICMPv6=58/DestUnreach=1/AddressUnreach=3	Address unreachable (general, used when there is no more specific reason); appears equivalent to host unreachable
 				elif Code == 3:
-					ReportId("IP", exploded_OrigdIP, "IP", "dead", 'host unreachable', ([]))
+					ReportId("IP", meta['OrigdIP'], "IP", "dead", 'host unreachable', ([]))
 					ReportId("RO", sIP, "HostUn", "router", "client_ip=" + dIP, ([]))
 ### IPv6/ICMPv6=58/DestUnreach=1/PortUnreach=4		Port unreachable and embedded protocol = 17, UDP, as it should be.  Appears equivalent to port unreachable
 				elif (Code == 4) and (p[IPerror6].nh == 17) and p.haslayer(UDPerror) and isinstance(p[UDPerror], UDPerror):
-					DNSServerLoc = p[IPerror6].src + ",UDP_53"
+					DNSServerLoc = meta['OrigsIP'] + ",UDP_53"
 					if (p[UDPerror].sport == 53) and (DNSServerLoc in ManualServerDescription) and (ManualServerDescription[DNSServerLoc] == "dns/server"):
 						#If orig packet coming from 53 and coming from a dns server, don't do anything (closed port on client is a common effect)
 						#Don't waste time on port unreachables going back to a dns server; too common, and ephemeral anyways.
@@ -3310,11 +3254,11 @@ def processpacket(p):
 					else:
 						#If orig packet coming from something other than 53, or coming from 53 and NOT coming from a dns server, log as closed
 						OrigDPort = str(p[UDPerror].dport)
-						OrigDstService = exploded_OrigdIP + ",UDP_" + OrigDPort
-						ReportId("US", exploded_OrigdIP, "UDP_" + OrigDPort, "closed", "port unreachable", ([]))
+						OrigDstService = meta['OrigdIP'] + ",UDP_" + OrigDPort
+						ReportId("US", meta['OrigdIP'], "UDP_" + OrigDPort, "closed", "port unreachable", ([]))
 
 						if include_udp_errors_in_closed_ports:
-							#Prober is dIP.  Probed port is: exploded_OrigdIP + ",UDP_" + OrigDPort
+							#Prober is dIP.  Probed port is: meta['OrigdIP'] + ",UDP_" + OrigDPort
 							if dIP not in ClosedPortsReceived:
 								ClosedPortsReceived[dIP] = set()
 							ClosedPortsReceived[dIP].add(OrigDstService)
@@ -3322,13 +3266,13 @@ def processpacket(p):
 								ReportId("IP", dIP, "IP", "suspicious", 'Scanned closed ports.', (['scan']))
 				elif (Code == 4) and (p[IPerror6].nh == 6) and isinstance(p[TCPerror], TCPerror):				#Port unreachable and embedded protocol = 6, TCP, which it shouldn't.
 					OrigDPort = str(p[TCPerror].dport)
-					Service = exploded_OrigdIP + ",TCP_" + OrigDPort
+					Service = meta['OrigdIP'] + ",TCP_" + OrigDPort
 					if Service in SynSentToTCPService and ((Service not in LiveTCPService) or LiveTCPService[Service]):
 						LiveTCPService[Service] = False
 						ReportId("TS", str(p[IPerror6].dst), "TCP_" + str(p[TCPerror].dport), "closed", '', ([]))
 
 					if Service in SynSentToTCPService:
-						#Prober is dIP.  Probed port is exploded_OrigdIP + ",TCP_" + OrigDPort
+						#Prober is dIP.  Probed port is meta['OrigdIP'] + ",TCP_" + OrigDPort
 						if dIP not in ClosedPortsReceived:
 							ClosedPortsReceived[dIP] = set()
 						ClosedPortsReceived[dIP].add(Service)
@@ -3381,24 +3325,24 @@ def processpacket(p):
 					router_mac_addr = str(p[ICMPv6NDOptSrcLLAddr].lladdr)
 					ReportId("MA", sIP, 'Ethernet', router_mac_addr, '', ([]))
 ### IPv6/ICMPv6=58/ND_NeighborSolicitation=135												https://tools.ietf.org/html/rfc4861
-			elif p.getlayer(ICMPv6ND_NS) and pp_ttl == 255 and p[ICMPv6ND_NS].code == 0:
+			elif p.getlayer(ICMPv6ND_NS) and meta['ttl'] == 255 and p[ICMPv6ND_NS].code == 0:
 				host_mac_addr = ''
 				if p.getlayer(ICMPv6NDOptSrcLLAddr):
 					host_mac_addr = str(p[ICMPv6NDOptSrcLLAddr].lladdr)
 				elif p.getlayer(Ether):
-					host_mac_addr = sMAC
+					host_mac_addr = meta['sMAC']
 				#else:
 				#	pass	#No source for ethernet mac addr, ignore
 				if host_mac_addr:
 					ReportId("MA", sIP, 'Ethernet', host_mac_addr, '', ([]))
 ### IPv6/ICMPv6=58/ND_NeighborAdvertisement=136												https://tools.ietf.org/html/rfc4861
-			elif p.getlayer(ICMPv6ND_NA) and p.getlayer(Ether) and pp_ttl == 255 and p[ICMPv6ND_NA].code == 0:
+			elif p.getlayer(ICMPv6ND_NA) and p.getlayer(Ether) and meta['ttl'] == 255 and p[ICMPv6ND_NA].code == 0:
 				if p[ICMPv6ND_NA].R == 1:
 					ReportId("RO", sIP, "NeighborAdvRouterFlag", "router", '', ([]))
-				host_mac_addr = sMAC
+				host_mac_addr = meta['sMAC']
 				ReportId("MA", sIP, 'Ethernet', host_mac_addr, '', ([]))
 ### IPv6/ICMPv6=58/ND_Redirect=137													http://www.tcpipguide.com/free/t_ICMPv6RedirectMessages-2.htm
-			elif p.getlayer(ICMPv6ND_Redirect) and p.getlayer(Ether) and pp_ttl == 255 and p[ICMPv6ND_Redirect].code == 0:
+			elif p.getlayer(ICMPv6ND_Redirect) and p.getlayer(Ether) and meta['ttl'] == 255 and p[ICMPv6ND_Redirect].code == 0:
 				ReportId("RO", sIP, "ND_Redirect_source", "router", "client_ip=" + dIP, ([]))				#the original complaining router
 				ReportId("RO", p[ICMPv6ND_Redirect].tgt, "ND_Redirect_target", "router", "client_ip=" + dIP, ([]))	#the better router to use
 				if p.getlayer(ICMPv6NDOptDstLLAddr):
