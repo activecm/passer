@@ -23,6 +23,7 @@ mkdir $HOME/.passer/
 VOLUME $HOME/.passer/
 
 COPY passer.py /passer.py
+COPY passer_lib.py /passer_lib.py
 
 ENTRYPOINT ["python", "/passer.py"]
 
