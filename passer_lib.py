@@ -30,6 +30,47 @@ use_scapy_all = True
 #======== Constants ========
 
 #==== Ports ====
+
+#======== Following are primary ports we want to do a full report on
+### IPv4/UDPv4/sunrpc=111
+### IPv4/UDPv4/ldap=389
+### IPv4/UDPv4/openvpn=1194		https://openvpn.net/index.php/open-source/documentation/howto.html
+### IPv4/UDPv4/l2f_or_lt2p=1701
+### IPv4/UDPv4/pptp=1723
+### IPv4/UDPv4/biap-mp=1962
+### IPv4/UDPv4/rdp=3389			https://www.rdpsoft.com/blog/remote-desktop-protocol/rdp-udp-transport-azure/
+### IPv4/UDPv4/l2tp=4500		https://www.privateinternetaccess.com/helpdesk/kb/articles/what-ports-are-used-by-your-vpn-service
+### IPv4/UDPv4/openvpn8080=8080		https://www.privateinternetaccess.com/helpdesk/kb/articles/what-ports-are-used-by-your-vpn-service
+### IPv4/UDPv4/gotomeeting8200=8200	https://support.logmeininc.com/gotomeeting/help/optimal-firewall-configuration-g2m060010
+### IPv4/UDPv4/udp8888=8888
+### IPV4/UDPv4/hangouts			https://community.arubanetworks.com/t5/Security/Configuring-Network-for-Google-Hangouts/td-p/59274
+PriUDPPortNames = {"88": "kerberos", "111": "sunrpc", "177": "xdmcp", "389": "ldap", "443": "udp_https", "500": "isakmp", "520": "rip", "1194": "openvpn", "1701": "l2tp1701", "1723": "pptp", "1853": "gotomeeting1853", "1962": "biap-mp", "2123": "gtp-control", "3389": "rdp", "3478": "skype3478", "3479": "skype3479", "3480": "skype3480", "3481": "skype3481", "4500": "l2tp", "6881": "bittorrent6881", "8080": "openvpn8080", "8200": "gotomeeting8200", "8888": "udp8888", "19305": "hangouts", "19306": "hangouts", "19307": "hangouts", "19308": "hangouts", "19309": "hangouts"}
+
+#======== Following udp ports are low priority ones that we just log anyways
+### IPv4/UDPv4/13    daytime		https://gkbrk.com/wiki/daytime_protocol/
+### IPv4/UDPv4/17    qotd 		https://gkbrk.com/wiki/qotd_protocol/
+### IPv4/UDPv4/179   bgp
+### IPv4/UDPv4/445   microsoft-ds
+### IPv4/UDPv4/465   igmpv3lite		https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2011-4015
+### IPv4/UDPv4/808   omirr/omirrd	but payload looks like snmp.  Hmm.
+### IPv4/UDPv4/1080  			does not appear to be used by socks
+### IPv4/UDPv4/1099  rmiregistry
+### IPv4/UDPv4/5093  sentinel-lm	https://www.kb.cert.org/vuls/id/108790
+### IPv4/UDPv4/5094  hart-ip		https://wiki.wireshark.org/HART-IP
+### IPv4/UDPv4/3128  assigned to squid, but not actually used by it
+### IPv4/UDPv4/6000  lots of possibilities
+### IPv4/UDPv4/8123  unknown udp8123
+### IPv4/UDPv4/9987  teamspeak3-voice	https://www.speedguide.net/port.php?port=9987
+### IPv4/UDPv4/17185 vxworks-debug	https://ics-cert.us-cert.gov/advisories/ICSA-10-214-01
+### IPv4/UDPv4/30718 lantronix		https://www.slideshare.net/kost/vk-exploringtreasuresof77-fehlantronixconfidence2014
+### IPv4/UDPv4/47808 bacnet		https://wiki.wireshark.org/Protocols/bacnet
+### IPv4/UDPv4/44818 rockwell-encap	http://literature.rockwellautomation.com/idc/groups/literature/documents/qr/comm-qr001_-en-e.pdf , https://ics-cert.us-cert.gov/advisories/ICSA-13-011-03
+SecUDPPortNames = {"7": "echo", "13": "daytime", "17": "qotd", "19": "chargen", "179": "bgp", "192": "osu-nms", "445": "microsoft-ds", "465": "igmpv3lite", "513": "who", "623": "asf-rmcp_or_ipmi", "808": "omirr", "1080": "udpsocks", "1099": "rmiregistry", "1500": "udp1500", "1604": "darkcomet_rat_winframe_icabrowser", "3128": "udpsquid", "3283": "udp3283", "3386": "udp3386", "4738": "udp4738", "4800": "udp4800", "5006": "udp5006", "5008": "udp5008", "5093": "sentienl-lm", "5094": "hart-ip", "5354": "mdnsresponder", "5632": "pcanywherestat", "6000": "udp6000", "6969": "acmsoda", "6970": "rtsp", "8000": "udp8000", "8123": "udp8123", "8301": "udp8301", "8302": "udp8302", "9050": "udp9050", "9600": "udp9600", "9987": "teamspeak3-voice", "16464": "udp16464", "17185": "vxworks-debug", "20000": "udp20000", "24223": "udp24223", "27960": "udp27960", "30718": "lantronix", "32015": "udp32015", "32764": "udp32764", "32770": "udp32770", "34436": "udp34436", "35950": "udp35950", "44818": "rockwell-encap", "46414": "udp46414", "47808": "bacnet", "50023": "udp50023", "51413": "transmission", "53007": "udp53007", "55020": "udp55020", "63520": "udp63520", "64211": "udp64211"}
+
+					#Some ports in PriUDPPortNames and SecUDPPortNames need warnings attached to them - list them and their warning here.
+udp_port_warnings = {'13': 'small', '17': 'small', '1194': 'tunnel', '1701': 'tunnel', '1723': 'tunnel', '4500': 'tunnel', '8080': 'tunnel'}
+
+
 sip_altport = (
                "22", "23", "80", "110",
                "1000", "1001", "1002", "1003", "1004", "1005", "1006", "1007", "1008", "1009", "1010", "1011", "1012", "1013", "1014", "1015", "1016", "1017", "1018", "1019", "1020", "1021", "1022", "1023", "1024", "1025", "1028", "1029", "1030", "1031", "1032", "1033", "1034", "1035", "1036", "1037", "1038", "1039", "1040", "1041", "1042", "1043", "1044", "1045", "1046", "1047", "1048", "1049", "1050", "1051", "1052", "1053", "1054", "1055", "1056", "1057", "1058", "1059", "1060", "1061", "1062", "1063", "1064", "1065", "1066", "1068", "1070", "1071", "1072", "1074", "1075", "1090", "1111", "1190", "1560", "1200", "1900",
@@ -57,7 +98,7 @@ SIPToMatch = re.compile('To:[^<]*<sip:([a-zA-Z0-9_\.-]+)@([a-zA-Z0-9:_\.-]+)[;>]
 
 
 #======== Variables ========
-passer_lib_version = '0.4'
+passer_lib_version = '0.5'
 Type = 0				#Indexes into the tuple used in passing data to the output handler
 IPAddr = 1
 Proto = 2
@@ -246,6 +287,7 @@ def UDP_extract(p, meta):
 
 	sIP = meta['sIP']
 	dport = meta['dport']
+	sport = meta['sport']
 
 	if p.getlayer(Raw):
 		Payload = p.getlayer(Raw).load
@@ -286,8 +328,18 @@ def UDP_extract(p, meta):
 	#	p.show()
 	#	quit()
 
-	#if p[UDP].op == 2:
-	#	state_set.add(("MA", meta['sIP'], "Ethernet", p[UDP].hwsrc.upper(), "", ()))
+#Handle easily categorized services early
+	elif dport in PriUDPPortNames:								#Client talking to server
+		warning_list = ()
+		if dport in udp_port_warnings:			#FIXME - move this outside of UDP main if block, and other udp_port_warning lines too?
+			warning_list = (udp_port_warnings[dport],)
+		state_set.add(("UC", sIP, "UDP_" + dport, "open", str(PriUDPPortNames[dport]) + "/client", warning_list))	#'portonlysignature'
+	elif sport in PriUDPPortNames:								#server talking to client
+		warning_list = ()
+		if sport in udp_port_warnings:
+			warning_list = (udp_port_warnings[sport],)
+		state_set.add(("US", sIP, "UDP_" + sport, "open", str(PriUDPPortNames[sport]) + "/server", warning_list))	#'portonlysignature'
+
 
 	return state_set
 

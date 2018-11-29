@@ -132,8 +132,6 @@ ClosedPortsReceived = {}	#Dictionary of sets.  Key is expanded IP address, value
 PolicyViolationUDPPorts = {'7': 'echo', '9': 'discard', '11': "sysstat", '13': 'daytime', '17': "qotd", '19': 'chargen', '69': 'tftp'}
 				#TCP ports banned by policy.  May wish to do the entire range from 0 to 19 inclusive.
 PolicyViolationTCPPorts = {'7': 'echo', '9': 'discard', '11': "sysstat", '13': 'daytime', '17': "qotd", '19': 'chargen', '23': 'telnet', '79': 'finger', "512": "rexec", "513": "rlogin", "514": "rsh_rcp"}
-				#Some ports in PriUDPPortNames and SecUDPPortNames need warnings attached to them - list them and their warning here.
-udp_port_warnings = {'13': 'small', '17': 'small', '1194': 'tunnel', '1701': 'tunnel', '1723': 'tunnel', '4500': 'tunnel', '8080': 'tunnel'}
 
 botnet_warning_list = {}	#Dictionary of "IP,proto_port": ['warning1', 'warning2'] entries that say if you see that trio, that IP should get this/these warnings.
 				#If we see syn/ack coming back from tcp C&C's, tag the host as 'bot_candc' and the dest IP of the syn/ack as 'bot'
@@ -149,41 +147,6 @@ HonorQuit = True		#Dont change this - it's an internal value to make the code mo
 
 
 #======== Port lists ========
-#======== Following are primary ports we want to do a full report on
-### IPv4/UDPv4/sunrpc=111
-### IPv4/UDPv4/ldap=389
-### IPv4/UDPv4/openvpn=1194		https://openvpn.net/index.php/open-source/documentation/howto.html
-### IPv4/UDPv4/l2f_or_lt2p=1701
-### IPv4/UDPv4/pptp=1723
-### IPv4/UDPv4/biap-mp=1962
-### IPv4/UDPv4/rdp=3389			https://www.rdpsoft.com/blog/remote-desktop-protocol/rdp-udp-transport-azure/
-### IPv4/UDPv4/l2tp=4500		https://www.privateinternetaccess.com/helpdesk/kb/articles/what-ports-are-used-by-your-vpn-service
-### IPv4/UDPv4/openvpn8080=8080		https://www.privateinternetaccess.com/helpdesk/kb/articles/what-ports-are-used-by-your-vpn-service
-### IPv4/UDPv4/gotomeeting8200=8200	https://support.logmeininc.com/gotomeeting/help/optimal-firewall-configuration-g2m060010
-### IPv4/UDPv4/udp8888=8888
-### IPV4/UDPv4/hangouts			https://community.arubanetworks.com/t5/Security/Configuring-Network-for-Google-Hangouts/td-p/59274
-PriUDPPortNames = {"88": "kerberos", "111": "sunrpc", "177": "xdmcp", "389": "ldap", "443": "udp_https", "500": "isakmp", "520": "rip", "1194": "openvpn", "1701": "l2tp1701", "1723": "pptp", "1853": "gotomeeting1853", "1962": "biap-mp", "2123": "gtp-control", "3389": "rdp", "3478": "skype3478", "3479": "skype3479", "3480": "skype3480", "3481": "skype3481", "4500": "l2tp", "6881": "bittorrent6881", "8080": "openvpn8080", "8200": "gotomeeting8200", "8888": "udp8888", "19305": "hangouts", "19306": "hangouts", "19307": "hangouts", "19308": "hangouts", "19309": "hangouts"}
-
-#======== Following udp ports are low priority ones that we just log anyways
-### IPv4/UDPv4/13    daytime		https://gkbrk.com/wiki/daytime_protocol/
-### IPv4/UDPv4/17    qotd 		https://gkbrk.com/wiki/qotd_protocol/
-### IPv4/UDPv4/179   bgp
-### IPv4/UDPv4/445   microsoft-ds
-### IPv4/UDPv4/465   igmpv3lite		https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2011-4015
-### IPv4/UDPv4/808   omirr/omirrd	but payload looks like snmp.  Hmm.
-### IPv4/UDPv4/1080  			does not appear to be used by socks
-### IPv4/UDPv4/1099  rmiregistry
-### IPv4/UDPv4/5093  sentinel-lm	https://www.kb.cert.org/vuls/id/108790
-### IPv4/UDPv4/5094  hart-ip		https://wiki.wireshark.org/HART-IP
-### IPv4/UDPv4/3128  assigned to squid, but not actually used by it
-### IPv4/UDPv4/6000  lots of possibilities
-### IPv4/UDPv4/8123  unknown udp8123
-### IPv4/UDPv4/9987  teamspeak3-voice	https://www.speedguide.net/port.php?port=9987
-### IPv4/UDPv4/17185 vxworks-debug	https://ics-cert.us-cert.gov/advisories/ICSA-10-214-01
-### IPv4/UDPv4/30718 lantronix		https://www.slideshare.net/kost/vk-exploringtreasuresof77-fehlantronixconfidence2014
-### IPv4/UDPv4/47808 bacnet		https://wiki.wireshark.org/Protocols/bacnet
-### IPv4/UDPv4/44818 rockwell-encap	http://literature.rockwellautomation.com/idc/groups/literature/documents/qr/comm-qr001_-en-e.pdf , https://ics-cert.us-cert.gov/advisories/ICSA-13-011-03
-SecUDPPortNames = {"7": "echo", "13": "daytime", "17": "qotd", "19": "chargen", "179": "bgp", "192": "osu-nms", "445": "microsoft-ds", "465": "igmpv3lite", "513": "who", "623": "asf-rmcp_or_ipmi", "808": "omirr", "1080": "udpsocks", "1099": "rmiregistry", "1500": "udp1500", "1604": "darkcomet_rat_winframe_icabrowser", "3128": "udpsquid", "3283": "udp3283", "3386": "udp3386", "4738": "udp4738", "4800": "udp4800", "5006": "udp5006", "5008": "udp5008", "5093": "sentienl-lm", "5094": "hart-ip", "5354": "mdnsresponder", "5632": "pcanywherestat", "6000": "udp6000", "6969": "acmsoda", "6970": "rtsp", "8000": "udp8000", "8123": "udp8123", "8301": "udp8301", "8302": "udp8302", "9050": "udp9050", "9600": "udp9600", "9987": "teamspeak3-voice", "16464": "udp16464", "17185": "vxworks-debug", "20000": "udp20000", "24223": "udp24223", "27960": "udp27960", "30718": "lantronix", "32015": "udp32015", "32764": "udp32764", "32770": "udp32770", "34436": "udp34436", "35950": "udp35950", "44818": "rockwell-encap", "46414": "udp46414", "47808": "bacnet", "50023": "udp50023", "51413": "transmission", "53007": "udp53007", "55020": "udp55020", "63520": "udp63520", "64211": "udp64211"}
 
 #From 122.224.158.195, payload is "8'\x82\xd7\x8fZ\xdbc\xfe\x00\x00\x00\x00\x00"
 fenull_scan_names = {"21": "udp-21", "22": "udp-22", "23": "udp-23", "25": "udp-25", "49": "udp-49", "80": "udp-80", "102": "udp-102", "110": "udp-110", "143": "udp-143", "636": "udp-636", "992": "udp-992", "993": "udp-993", "995": "udp-995"}
@@ -644,7 +607,7 @@ task_layers = set(['BOOTP', 'Control message', 'DHCP options', 'DNS', 'GRE', 'HS
 trailer_layers = set(['Raw', 'Padding'])
 special_layers = set(['802.1Q', '802.3', 'ARP', 'EAPOL', 'Ethernet', 'LLC', 'Padding', 'Raw', 'SNAP', 'Spanning Tree Protocol'])
 
-passerVersion = "2.64"
+passerVersion = "2.65"
 
 
 #======== Functions ========
@@ -1843,17 +1806,6 @@ def process_udp_ports(meta, SrcService, DstService, SrcClient, Payload, p):
 	#FIXME - add check for "if isinstance(p[DNS],  whatevertype):	here and at all p[] accesses.
 	elif (sport != "53") and (dport == "53") and not p.haslayer(DNS):						#non-dns coming in from what looks like a DNS client.
 		UnhandledPacket(p)
-#Handle easily categorized services early
-	elif dport in PriUDPPortNames:								#Client talking to server
-		warning_list = []
-		if dport in udp_port_warnings:
-			warning_list = [udp_port_warnings[dport]]
-		ReportId("UC", sIP, "UDP_" + dport, "open", str(PriUDPPortNames[dport]) + "/client", (warning_list))	#'portonlysignature'
-	elif sport in PriUDPPortNames:								#server talking to client
-		warning_list = []
-		if dport in udp_port_warnings:
-			warning_list = [udp_port_warnings[dport]]
-		ReportId("US", sIP, "UDP_" + sport, "open", str(PriUDPPortNames[sport]) + "/server", (warning_list))	#'portonlysignature'
 ### IP/UDPv4/bootp_dhcp=67
 	elif meta['ip_class'] == '4' and (sport == "67") and (dport == "68"):		#Bootp/dhcp server talking to client
 		ReportId("US", sIP, "UDP_" + sport, "open", "bootpordhcp/server", ([]))
@@ -2458,8 +2410,8 @@ def process_udp_ports(meta, SrcService, DstService, SrcClient, Payload, p):
 		ReportId("UC", sIP, "UDP_" + dport, "open", str(SecUDPPortNames[dport]) + "/client", (warning_list))	#'portonlysignature'
 	elif sport in SecUDPPortNames:
 		warning_list = []
-		if dport in udp_port_warnings:
-			warning_list = [udp_port_warnings[dport]]
+		if sport in udp_port_warnings:
+			warning_list = [udp_port_warnings[sport]]
 		UnhandledPacket(p)
 		ReportId("US", sIP, "UDP_" + sport, "open", str(SecUDPPortNames[sport]) + "/server", (warning_list))	#'portonlysignature'
 	elif meta['ip_class'] == '4' and p[IP].frag > 0:
