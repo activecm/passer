@@ -98,7 +98,7 @@ SIPToMatch = re.compile('To:[^<]*<sip:([a-zA-Z0-9_\.-]+)@([a-zA-Z0-9:_\.-]+)[;>]
 
 
 #======== Variables ========
-passer_lib_version = '0.5'
+passer_lib_version = '0.6'
 Type = 0				#Indexes into the tuple used in passing data to the output handler
 IPAddr = 1
 Proto = 2
@@ -152,6 +152,7 @@ def explode_ip(raw_addr):
 				ip_obj = ipaddress.ip_address(colon_hex_string)
 			except ValueError:
 				if Devel:
+					#FIXME - move Debug to this library
 					Debug('IP Conversion problem with:')
 					Debug(raw_addr_string)
 					raise
@@ -168,7 +169,7 @@ def generate_meta_from_packet(gmfp_pkt):
 	"""Creates a dictionary of packet fields that may be needed by other layers."""
 
 	#Default values.  Prefer '' to None so these can be used without having to use str() on everything.
-	meta_dict = {'sMAC': '', 'dMAC': '', 'cast_type': '', 'ip_class': '', 'ttl': '', 'sIP': '', 'dIP': '', 'sport': '', 'dport': '', 'pkt_layers': []}
+	meta_dict = {'sMAC': '', 'dMAC': '', 'cast_type': '', 'ip_class': '', 'ttl': '', 'sIP': '', 'dIP': '', 'sport': '', 'dport': '', 'SrcService': '', 'DstService': '', 'SrcClient': '', 'pkt_layers': [], 'flags': 0x0}
 
 	meta_dict['pkt_layers'] = list(ReturnLayers(gmfp_pkt))
 
@@ -182,13 +183,6 @@ def generate_meta_from_packet(gmfp_pkt):
 			meta_dict['cast_type'] = 'multicast'
 		#For non-broadcast/multicast, we don't put in the string 'unicast' as that's the default.  It also allows us to test
 		#if meta_dict['cast_type']:  as a quick test for broadcast or multicast
-
-	if gmfp_pkt.haslayer('TCP'):
-		meta_dict['sport'] = str(gmfp_pkt['TCP'].sport)
-		meta_dict['dport'] = str(gmfp_pkt['TCP'].dport)
-	elif gmfp_pkt.haslayer('UDP'):
-		meta_dict['sport'] = str(gmfp_pkt['UDP'].sport)
-		meta_dict['dport'] = str(gmfp_pkt['UDP'].dport)
 
 	if gmfp_pkt.haslayer('ARP'):
 		meta_dict['sIP'] = gmfp_pkt['ARP'].psrc
@@ -207,6 +201,21 @@ def generate_meta_from_packet(gmfp_pkt):
 	#else:
 	#	gmfp_pkt.show()
 	#	quit()
+
+	if gmfp_pkt.haslayer('TCP'):
+		meta_dict['sport'] = str(gmfp_pkt['TCP'].sport)
+		meta_dict['dport'] = str(gmfp_pkt['TCP'].dport)
+		meta_dict['SrcService'] = meta_dict['sIP'] + ",TCP_" + meta_dict['sport']
+		meta_dict['DstService'] = meta_dict['dIP'] + ",TCP_" + meta_dict['dport']
+		meta_dict['SrcClient'] = meta_dict['sIP'] + ",TCP_" + meta_dict['dport']
+		meta_dict['flags'] = gmfp_pkt['TCP'].flags
+	elif gmfp_pkt.haslayer('UDP'):
+		meta_dict['sport'] = str(gmfp_pkt['UDP'].sport)
+		meta_dict['dport'] = str(gmfp_pkt['UDP'].dport)
+		meta_dict['SrcService'] = meta_dict['sIP'] + ",UDP_" + meta_dict['sport']
+		meta_dict['DstService'] = meta_dict['dIP'] + ",UDP_" + meta_dict['dport']
+		meta_dict['SrcClient'] = meta_dict['sIP'] + ",UDP_" + meta_dict['dport']
+		#udp_layer = gmfp_pkt.getlayer(UDP)
 
 	if gmfp_pkt.haslayer('IPerror'):
 		meta_dict['OrigsIP'] = gmfp_pkt['IPerror'].src
@@ -274,9 +283,19 @@ def IP_extract(p, meta):
 def TCP_extract(p, meta):
 	"""Pull all statements from the TCP layer and return as a set of tuples."""
 
+	#Transitional variables
+	sIP = meta['sIP']
+	dIP = meta['dIP']
+	dport = meta['dport']
+	sport = meta['sport']
+
+
 	state_set = set([])
 
-	if (p[TCP].flags & 0x17) == 0x12:	#SYN/ACK
+	if (sIP == dIP) and (sport == dport):
+		state_set.add(("TS", sIP, "TCP_" + sport, "attack", 'land attack IP address spoofed', ('malicious', 'spoofed')))
+
+	if (meta['flags'] & 0x17) == 0x12:	#SYN/ACK
 		state_set.add(("TS", meta['sIP'], "TCP_" + meta['sport'], "listening", "", ()))
 
 	return state_set
@@ -286,6 +305,7 @@ def UDP_extract(p, meta):
 	"""Pull all statements from the UDP layer and return as a set of tuples."""
 
 	sIP = meta['sIP']
+	dIP = meta['dIP']
 	dport = meta['dport']
 	sport = meta['sport']
 
@@ -296,6 +316,9 @@ def UDP_extract(p, meta):
 
 
 	state_set = set([])
+
+	if (sIP == dIP) and (sport == dport):
+		state_set.add(("US", sIP, "UDP_" + sport, "attack", 'land attack', ('malicious', 'spoofed')))
 
 
 ### IP/UDP/SIP sipvicious scanner and other SIP clients.  https://www.nurango.ca/blog/sipvicious-the-not-so-friendly-scanner , http://www.hackingvoip.com/presentations/sample_chapter3_hacking_voip.pdf p54
@@ -342,5 +365,3 @@ def UDP_extract(p, meta):
 
 
 	return state_set
-
-

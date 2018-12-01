@@ -607,7 +607,7 @@ task_layers = set(['BOOTP', 'Control message', 'DHCP options', 'DNS', 'GRE', 'HS
 trailer_layers = set(['Raw', 'Padding'])
 special_layers = set(['802.1Q', '802.3', 'ARP', 'EAPOL', 'Ethernet', 'LLC', 'Padding', 'Raw', 'SNAP', 'Spanning Tree Protocol'])
 
-passerVersion = "2.65"
+passerVersion = "2.67"
 
 
 #======== Functions ========
@@ -722,7 +722,7 @@ def generate_summary_lines():
 
 def Debug(DebugStr):
 	"""Prints a note to stderr"""
-	if Devel != False:
+	if Devel is not False:
 		sys.stderr.write(DebugStr + '\n')
 
 
@@ -730,7 +730,7 @@ def ShowPacket(orig_packet, banner_string, quit_override_preference):
 	"""In development mode, displays details about an unknown packet, and exits if QuitOnShow (user param) is True."""
 	UnhandledPacket(orig_packet)
 
-	if Devel != False:
+	if Devel is not False:
 		Debug("======== " + str(banner_string))
 		try:
 			Debug(str(orig_packet.show(dump=True)))
@@ -1734,7 +1734,7 @@ def process_udp_dns_response(src_ip, dst_ip, src_service, src_port, p_dns, orig_
 
 
 
-def process_udp_ports(meta, SrcService, DstService, SrcClient, Payload, p):
+def process_udp_ports(meta, p):
 	"""Process a UDP packet (ipv4 or ipv6)."""
 
 	#Transition variables
@@ -1742,6 +1742,14 @@ def process_udp_ports(meta, SrcService, DstService, SrcClient, Payload, p):
 	dIP = meta['dIP']
 	sport = meta['sport']
 	dport = meta['dport']
+	SrcService = meta['SrcService']
+	DstService = meta['DstService']
+	SrcClient = meta['SrcClient']
+
+	if p.getlayer(Raw):
+		Payload = p.getlayer(Raw).load
+	else:
+		Payload = ""
 
 
 	ReportAll(UDP_extract(p, meta))
@@ -1822,9 +1830,9 @@ def process_udp_ports(meta, SrcService, DstService, SrcClient, Payload, p):
 #__ haslayer(TFTP)
 ### IP/UDP/TFTP=69
 	elif p.haslayer(TFTP):
-		if (dport == "69"):
+		if dport == "69":
 			ReportId("UC", sIP, "UDP_" + dport, "open", 'tftp/client', (['plaintext', 'portpolicyviolation']))
-		elif (sport == "69"):
+		elif sport == "69":
 			ReportId("US", sIP, "UDP_" + sport, "open", 'tftp/server', (['plaintext', 'portpolicyviolation']))
 		else:
 			ShowPacket(p, "IP/UDP/unhandled packet with TFTP layer", HonorQuit)
@@ -2141,7 +2149,7 @@ def process_udp_ports(meta, SrcService, DstService, SrcClient, Payload, p):
 
 ### IP/UDP/drobo=5002 used by drobo NAS
 	elif (dport == "5002") and Payload and Payload.startswith('DRINETTM'):
-			ReportId("UC", sIP, "UDP_" + dport, "open", "drobo_nas_scan/" + meta['cast_type'] + "client", ([]))
+		ReportId("UC", sIP, "UDP_" + dport, "open", "drobo_nas_scan/" + meta['cast_type'] + "client", ([]))
 ### IP/UDP/vonage
 	elif (sport == "5061") and (dport == "5061") and (dIP in vonage_sip_servers):		#Vonage SIP client
 		if Payload and (Payload.find('.vonage.net:5061 SIP/2.0') > -1):
@@ -2433,10 +2441,10 @@ def process_udp_ports(meta, SrcService, DstService, SrcClient, Payload, p):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "udp" + dport + "/broadcastclient", ([]))			#'portonlysignature'
 	elif sport in broadcast_udp_ports:
 		ReportId("US", sIP, "UDP_" + sport, "open", 'udp' + sport + '/server', ([]))				#'portonlysignature'
-	elif meta['dMAC'] == "ff:ff:ff:ff:ff:ff":
-		ShowPacket(p, "IP/UDP/unhandled broadcast", HonorQuit)
-	else:
-		ShowPacket(p, "IP/UDP/unhandled port", HonorQuit)
+	#elif meta['dMAC'] == "ff:ff:ff:ff:ff:ff":
+	#	ShowPacket(p, "IP/UDP/unhandled broadcast", HonorQuit)
+	#else:
+	#	ShowPacket(p, "IP/UDP/unhandled port", HonorQuit)
 
 
 def processpacket(p):
@@ -2492,6 +2500,11 @@ def processpacket(p):
 	sport = meta['sport']
 	dport = meta['dport']
 
+	if p.getlayer(Raw):
+		Payload = p.getlayer(Raw).load
+	else:
+		Payload = ""
+
 
 ### Spanning Tree Protocol
 	if isinstance(p, Dot3) and p.haslayer(LLC) and isinstance(p[LLC], LLC):
@@ -2532,11 +2545,6 @@ def processpacket(p):
 		#Best to get these from arps instead; if we get them from here, we get router macs for foreign addresses.
 		#ReportId("MA", sIP, "Ethernet", meta['sMAC'], '', ([]))
 		#ReportId("MA", dIP, "Ethernet", dMAC, '', ([]))
-
-		if p.getlayer(Raw):
-			Payload = p.getlayer(Raw).load
-		else:
-			Payload = ""
 
 ### IPv4/IP
 		if p[IP].proto == 0:
@@ -2663,11 +2671,7 @@ def processpacket(p):
 			UnhandledPacket(p)
 ### IPv4/TCPv4
 		elif p[IP].proto == 6 and p.haslayer(TCP) and isinstance(p[TCP], TCP):		#TCP
-			sport = str(p[TCP].sport)
-			dport = str(p[TCP].dport)
-
-			if (sIP == dIP) and (sport == dport):
-				ReportId("TS", sIP, "TCP_" + sport, "attack", 'land attack IP address spoofed', (['malicious', 'spoofed']))
+			ReportAll(TCP_extract(p, meta))
 
 			#print meta['sIP'] + ":" + meta['sport'] + " -> ", meta['dIP'] + ":" + meta['dport'],
 			if (p[TCP].flags & 0x17) == 0x12:	#SYN/ACK (RST and FIN off)
@@ -2957,20 +2961,7 @@ def processpacket(p):
 			#UDP.  We have to check the object type as well as we do get (corrupted? truncated?) packets with type 17 that aren't udp:  AttributeError: 'NoneType' object has no attribute 'sport'
 			#Change over to p.getlayer(ICMPv6DestUnreach) ?  We're getting crashes on elif p[IP].proto == 17 and (type(p[UDP]) == UDP):
 			#FIXME - possibly run udp packets through ServiceFPs as well?
-			#FIXME - use this *_layer = p.getlayer(*) format in all sections
-			#FIXME - pull all the extractions as high as possible in their section so we only look them up once
-			udp_layer = p.getlayer(UDP)
-			sport = str(udp_layer.sport)				#Formerly sport=str(p[UDP].sport)
-			dport = str(udp_layer.dport)
-
-			if (sIP == dIP) and (sport == dport):
-				ReportId("US", sIP, "UDP_" + sport, "attack", 'land attack', (['malicious', 'spoofed']))
-
-			SrcService = sIP + ",UDP_" + sport
-			DstService = dIP + ",UDP_" + dport
-			SrcClient = sIP + ",UDP_" + dport
-
-			process_udp_ports(meta, SrcService, DstService, SrcClient, Payload, p)
+			process_udp_ports(meta, p)
 
 ### IPv4/UDPv4, probably truncated/fragmented
 		elif p[IP].proto == 17:					#This is the case where the protocol is listed as 17, but there's no complete UDP header.  Quite likely a 2nd or future fragment.
@@ -2980,6 +2971,7 @@ def processpacket(p):
 			outer_ip = p.getlayer(IP, nb=1)
 			inner_layer = outer_ip.payload
 			if isinstance(inner_layer, IP):
+				#FIXME - submit the inner packet for processing?
 				if inner_layer.getlayer(Raw).load == "this is not an attack":
 					ReportId("IP", sIP, "ipencap", "open", 'ipencap/client', (['tunnel', 'scan']))
 				else:
@@ -3083,11 +3075,6 @@ def processpacket(p):
 		if meta['sMAC'] == 'ff:ff:ff:ff:ff:ff':
 			ReportId("IP", sIP, "Broadcast_source_mac", "open", "Source mac address is broadcast", (['noncompliant']))
 
-		if p.getlayer(Raw):
-			Payload = p.getlayer(Raw).load
-		else:
-			Payload = ""
-
 ### IPv6/IPv6ExtHdrHopByHop=0  Hop-by-hop option header
 		if p[IPv6].nh == 0 and meta['ttl'] == 1 and p.getlayer(IPv6ExtHdrHopByHop) and p[IPv6ExtHdrHopByHop].nh == 58 and (p.haslayer(ICMPv6MLQuery) or p.haslayer(ICMPv6MLReport) or p.haslayer(ICMPv6MLDone)):	#0 is Hop-by-hop options
 			UnhandledPacket(p)
@@ -3112,12 +3099,8 @@ def processpacket(p):
 			#https://tools.ietf.org/html/rfc2711 (router alert option)
 			#Specifically "router contains a MLD message": https://tools.ietf.org/html/rfc2710
 ### IPv6/TCPv6=6
-		elif p[IPv6].nh == 6:
-			sport = str(p[TCP].sport)
-			dport = str(p[TCP].dport)
-
-			if (sIP == dIP) and (sport == dport):
-				ReportId("TS", sIP, "TCP_" + sport, "attack", 'land attack IP address spoofed', (['malicious', 'spoofed']))
+		elif p[IPv6].nh == 6 and p.haslayer(TCP):
+			ReportAll(TCP_extract(p, meta))
 
 			if (p[TCP].flags & 0x17) == 0x12:	#SYN/ACK	(RST and FIN off)
 				CliService = dIP + ",TCP_" + sport
@@ -3175,20 +3158,11 @@ def processpacket(p):
 				ReportId("TC", sIP, "TCP_" + dport, "open", "TCP ACK/RST/FIN flag scanner", (['noncompliant', 'scan']))
 			else:
 				ShowPacket(p, "IPv6/TCPv6/UnhandledFlags: " + str(p[TCP].flags), HonorQuit)
+		elif p[IPv6].nh == 6:
+			ShowPacket(p, "IPv6/nh==6 but no TCP layer: " + str(p[TCP].flags), HonorQuit)
 ### IPv6/UDPv6=17
 		elif (p[IPv6].nh == 17) and p.haslayer(UDP):
-			udp_layer = p.getlayer(UDP)
-			sport = str(udp_layer.sport)
-			dport = str(udp_layer.dport)
-
-			if (sIP == dIP) and (sport == dport):
-				ReportId("US", sIP, "UDP_" + sport, "attack", 'land attack IP address spoofed', (['malicious', 'spoofed']))
-
-			SrcService = sIP + ",UDP_" + sport
-			DstService = dIP + ",UDP_" + dport
-			SrcClient = sIP + ",UDP_" + dport
-
-			process_udp_ports(meta, SrcService, DstService, SrcClient, Payload, p)
+			process_udp_ports(meta, p)
 
 ### IPv6/Fragmentation=44
 		elif p[IPv6].nh == 44: 		#Fragment header.  Not worth trying to extract info from following headers.
