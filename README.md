@@ -65,13 +65,14 @@ docker build -t quay.io/activecm/passer .
 
 And then you can run it like this:
 ```bash
-docker run --rm -i --name=passer --net=host quay.io/activecm/passer
+docker run --rm -i --init --name=passer --net=host quay.io/activecm/passer
 ```
 
 In order to kill passer you can run:
 ```bash
 docker stop passer
 ```
+or press `Ctrl-\` (control then backslash) in passer's window.
 
 ## Examples
 
@@ -79,7 +80,7 @@ Both native and docker equivalent commands are given for each of the following e
 ```bash
 # "c" for "containerized"
 function cpasser() {  
-  local docker_args=("--rm" "--interactive" "--name" "passer" "--net" "host")
+  local docker_args=("--rm" "--interactive" "--init" "--name" "passer" "--net" "host")
   local passer_args=()
   while [[ $# -gt 0 ]]; do
     case $1 in
