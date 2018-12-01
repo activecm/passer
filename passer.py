@@ -3669,6 +3669,7 @@ if __name__ == "__main__":
 
 	#Only write out if changes have been made (if no changes have been made, no point in writing the dictionary out).  To test this, see if there are any entries in NewSuspiciousIPs.
 	if NewSuspiciousIPs:
+		SuspiciousIPs_at_end = []
 		#We may be in a situation where two copies of this program running at the same time may both have changes to write.  Just before writing this out, we re-read the on-disk version to pull in any changes made by other copies that finished before us.
 		if os.path.exists(suspicious_ips_file):
 			with open(suspicious_ips_file) as suspicious_h:
