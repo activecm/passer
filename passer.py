@@ -531,7 +531,7 @@ special_layers = set(['802.1Q', '802.3', 'ARP', 'EAPOL', 'Ethernet', 'LLC', 'Pad
 
 meta = {}		#Empty dictionary - not used in this version of passer, but will be used in the next.  Fills the open space in the ShowPacket function call.
 
-passerVersion = "2.87"
+passerVersion = "2.89"
 
 
 #======== Functions ========
@@ -689,7 +689,7 @@ def packet_timestamps(pt_p):
 #
 #	if prefs['devel']:
 #		if os.path.isdir(PayloadDir):
-#			if not Payload == "None":
+#			if not Payload == b'None':
 #				pfile = open(PayloadFile, 'a')
 #				pfile.write(Payload)
 #				pfile.close()
@@ -700,9 +700,10 @@ def write_object(filename, generic_object):
 
 	try:
 		with open(filename, "wb") as write_h:
-			write_h.write(generic_object)
+			write_h.write(generic_object.encode('utf-8'))
 	except:
 		sys.stderr.write("Problem writing " + filename + ", skipping.")
+		raise
 
 	return
 
@@ -893,6 +894,10 @@ def ReportId(Type, CompressedIPAddr, Proto, State, Description, Warnings, prefs,
 	if ShouldPrint:
 		try:
 			OutString = Type + "," + IPAddr + "," + Proto + "," + State + "," + Description
+			if prefs['timestamp']:
+				OutString += ',' + str(processpacket.current_stamp) + ',' + processpacket.current_string
+			#else:
+			#	OutString += ',,'				#Future: When we're not showing the timestamps, still create the columns so logs line up
 			print(OutString)
 			if ReportId.log_h is not None:
 				ReportId.log_h.write(OutString + '\n')
@@ -931,7 +936,7 @@ def process_udp_ports(meta, p, prefs, dests):
 	if p.getlayer(Raw):
 		Payload = p.getlayer(Raw).load
 	else:
-		Payload = ""
+		Payload = b""
 
 	#Persistent variables
 	if "SipPhoneMatch" not in process_udp_ports.__dict__:
@@ -992,7 +997,7 @@ def process_udp_ports(meta, p, prefs, dests):
 			ReportId("UC", sIP, "UDP_" + dport, "open", "bootpordhcp/client", ([]), prefs, dests)
 			for one_opt in p[DHCP].options:				#Can't directly access p.haslayer(DHCPOptions) because it's a list of tuples.  https://stackoverflow.com/questions/22152130/how-can-i-get-option-number-from-an-dhcp-header-in-scapy
 				if one_opt[0] == 'hostname':
-					ReportId("NA", sIP, "DHCP", one_opt[1], "dhcp", ([]), prefs, dests)
+					ReportId("NA", sIP, "DHCP", one_opt[1].decode('UTF-8'), "dhcp", ([]), prefs, dests)
 		#else:						#If you want to record which macs are asking for addresses, do it here.
 		#	pass
 
@@ -1008,10 +1013,10 @@ def process_udp_ports(meta, p, prefs, dests):
 			ShowPacket(p, meta, "IP/UDP/unhandled packet with TFTP layer", HonorQuit, prefs, dests)
 
 ### IP/UDP/udp_http=80 nmap quic scan
-	elif (dport == "80") and (Payload == '\r12345678Q999' + nullbyte):
+	elif (dport == "80") and (Payload == b'\r12345678Q999' + nullbyte):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "udp-http/client nmap QUIC scan", (['scan', ]), prefs, dests)
 ### IP/UDP/udp_http=80 with empty payload
-	elif (dport == "80") and ((Payload is None) or (Payload == '')):
+	elif (dport == "80") and ((Payload is None) or (Payload == b'')):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "null-udp-http/client", ([]), prefs, dests)
 ### IP/UDP/udp_http=80 with torrent current connection id payload		https://gist.github.com/xboston/6130535
 	elif (dport == "80") and Payload and (Payload.startswith(torrent_connection_id)):
@@ -1085,12 +1090,12 @@ def process_udp_ports(meta, p, prefs, dests):
 	elif (not has_advanced_ntp_headers) and ((sport == "123") or (dport == "123")):
 		UnhandledPacket(p, prefs, dests)							#Unfortunately, this version of scapy is too old to handle the new NTP headers.
 ### IP/UDP/pwdgen=129		https://tools.ietf.org/html/rfc972
-	elif (dport == "129") and (Payload == "\n"):
+	elif (dport == "129") and (Payload == b'\n'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "pwdgen/client", ([]), prefs, dests)
 ### IP/UDP/135
-	elif sIP.startswith('64.39.99.') and dport == "135" and Payload.endswith('QUALYSGUARD123'):
+	elif sIP.startswith('64.39.99.') and dport == "135" and Payload.endswith(b'QUALYSGUARD123'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "epmap/clientscanner", (['scan', ]), prefs, dests)
-	elif dport == "135" and Payload.find('NTLMSSP') > -1:
+	elif dport == "135" and Payload.find(b'NTLMSSP') > -1:
 		ReportId("UC", sIP, "UDP_" + dport, "open", "epmap/client", ([]), prefs, dests)
 
 #__ haslayer(NBNSQueryRequest)
@@ -1099,7 +1104,7 @@ def process_udp_ports(meta, p, prefs, dests):
 		if dport == "137":
 			if meta['dMAC'] == "ff:ff:ff:ff:ff:ff":				#broadcast
 				ReportId("UC", sIP, "UDP_" + dport, "open", "netbios-ns/broadcastclient", ([]), prefs, dests)
-			elif Payload and (Payload.find('CKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') > -1):	#wildcard
+			elif Payload and (Payload.find(b'CKAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') > -1):	#wildcard
 				ReportId("UC", sIP, "UDP_" + dport, "open", "netbios-ns/wildcardclient", (['amplification', 'spoofed']), prefs, dests)
 			else:
 				ReportId("UC", sIP, "UDP_" + dport, "open", "netbios-ns/unicastclient", ([]), prefs, dests)
@@ -1111,8 +1116,8 @@ def process_udp_ports(meta, p, prefs, dests):
 ### IP/UDP/netbios-ns=137 response
 	elif p.haslayer(NBNSQueryResponse):
 		if sport == "137":
-			netbios_hostname = p[NBNSQueryResponse].RR_NAME.rstrip().rstrip(nullbyte)
-			netbios_address = p[NBNSQueryResponse].NB_ADDRESS.rstrip()
+			netbios_hostname = p[NBNSQueryResponse].RR_NAME.rstrip().rstrip(nullbyte).decode('UTF-8')
+			netbios_address = p[NBNSQueryResponse].NB_ADDRESS.rstrip().decode('UTF-8')
 			ReportId("US", sIP, "UDP_" + sport, "open", "netbios-ns", ([]), prefs, dests)
 			process_udp_ports.UDPManualServerDescription[FromPort] = "netbios-ns"
 			ReportId("NA", netbios_address, "PTR", netbios_hostname, "netbios-ns", ([]), prefs, dests)
@@ -1122,7 +1127,7 @@ def process_udp_ports(meta, p, prefs, dests):
 #__ haslayer(NBTDatagram)
 ### IP/UDP/netbios-dgm=138 query
 	elif p.haslayer(NBTDatagram):
-		netbios_hostname = p[NBTDatagram].SourceName.rstrip()
+		netbios_hostname = p[NBTDatagram].SourceName.rstrip().decode('UTF-8')
 		ReportId("NA", sIP, "PTR", netbios_hostname, "netbios-dgm", ([]), prefs, dests)
 		if (sport == "138") and (dport == "138"):
 			ReportId("US", sIP, "UDP_" + sport, "open", "netbios-dgm", ([]), prefs, dests)
@@ -1138,36 +1143,39 @@ def process_udp_ports(meta, p, prefs, dests):
 #__ haslayer(SNMP)
 ### IP/UDP/SNMP=161
 	elif p.haslayer(SNMP):
-		snmp_community_string = remove_control_characters(str(p[SNMP].community)).strip(' \t\r\n\0')
-		if dport == "161" and (p.haslayer(SNMPget) or p.haslayer(SNMPbulk) or p.haslayer(SNMPvarbind)):
-			if ShowCredentials:
-				ReportId("UC", sIP, "UDP_" + dport, "open", "snmp/client community string:" + snmp_community_string, (['plaintext', ]), prefs, dests)
-			else:
-				ReportId("UC", sIP, "UDP_" + dport, "open", 'snmp/client', (['plaintext']), prefs, dests)
-		elif sport == "161" and p.haslayer(SNMPresponse):
-			if ShowCredentials:
-				ReportId("US", sIP, "UDP_" + sport, "open", "snmp/server community string:" + snmp_community_string, (['plaintext', ]), prefs, dests)
-				process_udp_ports.UDPManualServerDescription[FromPort] = "snmp/server community string:" + snmp_community_string
-			else:
-				ReportId("US", sIP, "UDP_" + sport, "open", 'snmp/server', (['plaintext', ]), prefs, dests)
-				process_udp_ports.UDPManualServerDescription[FromPort] = "snmp/server"
-		else:
-			ShowPacket(p, meta, "IP/UDP/unhandled packet with SNMP layer", HonorQuit, prefs, dests)
+		#FIXME - extracting snmp community string?
+		#type(p[SNMP].community)
+		#p[SNMP].show()
+		#snmp_community_string = remove_control_characters(str(p[SNMP].community.decode('utf-8'))).strip(' \t\r\n\0')
+		#if dport == "161" and (p.haslayer(SNMPget) or p.haslayer(SNMPbulk) or p.haslayer(SNMPvarbind)):
+		#	if ShowCredentials:
+		#		ReportId("UC", sIP, "UDP_" + dport, "open", "snmp/client community string:" + snmp_community_string, (['plaintext', ]), prefs, dests)
+		#	else:
+		#		ReportId("UC", sIP, "UDP_" + dport, "open", 'snmp/client', (['plaintext']), prefs, dests)
+		#elif sport == "161" and p.haslayer(SNMPresponse):
+		#	if ShowCredentials:
+		#		ReportId("US", sIP, "UDP_" + sport, "open", "snmp/server community string:" + snmp_community_string, (['plaintext', ]), prefs, dests)
+		#		process_udp_ports.UDPManualServerDescription[FromPort] = "snmp/server community string:" + snmp_community_string
+		#	else:
+		#		ReportId("US", sIP, "UDP_" + sport, "open", 'snmp/server', (['plaintext', ]), prefs, dests)
+		#		process_udp_ports.UDPManualServerDescription[FromPort] = "snmp/server"
+		#else:
+		ShowPacket(p, meta, "IP/UDP/unhandled packet with SNMP layer", HonorQuit, prefs, dests)
 
 	elif sport == "161" or dport == "161":
 		UnhandledPacket(p, prefs, dests)
 ### IP/UDP/svrloc=427	https://tools.ietf.org/html/rfc2608
-	elif dport == "427" and Payload and (Payload.find('service:') > -1):
+	elif dport == "427" and Payload and (Payload.find(b'service:') > -1):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "svrloc/client", ([]), prefs, dests)
 ### IP/UDP/isakmp=500
 	elif (sport == "500") and (dport == "500") and isinstance(p[ISAKMP], ISAKMP) and (p[ISAKMP].init_cookie != ''):
 		ReportId("US", sIP, "UDP_" + sport, "open", "isakmp/generic", ([]), prefs, dests)
 		process_udp_ports.UDPManualServerDescription[FromPort] = "isakmp/generic"
 ### IP/UDP/biff=512
-	elif dport == "512" and Payload and (Payload.find('@') > -1):
+	elif dport == "512" and Payload and (Payload.find(b'@') > -1):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "biff/client", ([]), prefs, dests)
 ### IP/UDP/syslog=514	https://www.ietf.org/rfc/rfc3164.txt
-	elif dport == "514" and Payload and Payload.startswith('<') and (Payload[2] == '>' or Payload[3] == '>' or Payload[4] == '>'):
+	elif dport == "514" and Payload and Payload.startswith(b'<') and (Payload[2] == b'>' or Payload[3] == b'>' or Payload[4] == b'>'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "syslog/client", (['plaintext', ]), prefs, dests)
 		ReportId("US", dIP, "UDP_" + dport, "open", "syslog/server not confirmed", (['plaintext', ]), prefs, dests)
 		process_udp_ports.UDPManualServerDescription[FromPort] = "syslog/server not confirmed"
@@ -1182,10 +1190,10 @@ def process_udp_ports(meta, p, prefs, dests):
 			#ShowPacket(p, meta, "Syslog that does not match regex", HonorQuit, prefs, dests)
 			UnhandledPacket(p, prefs, dests)
 ### IP/UDP/snmp on alternate ports
-	elif (dport in snmp_altport) and Payload and (Payload.find('public') > -1):
+	elif (dport in snmp_altport) and Payload and (Payload.find(b'public') > -1):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "snmp-altport/client", (['nonstandardport', ]), prefs, dests)
 ### IP/UDP/ibm-db2=523 client
-	elif (dport == "523") and Payload and (Payload.find('DB2GETADDR') > -1):
+	elif (dport == "523") and Payload and (Payload.find(b'DB2GETADDR') > -1):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "ibm-db2/clientscanner", (['scan', ]), prefs, dests)
 ### IP/UDP/DHCPv6=547 request
 	elif meta['ip_class'] == '6' and (sport == "546") and (dport == "547") and dIP in ("ff02::1:2", "ff02:0000:0000:0000:0000:0000:0001:0002"):
@@ -1196,13 +1204,13 @@ def process_udp_ports(meta, p, prefs, dests):
 	elif meta['ip_class'] == '6' and (sport == "547") and (dport == "546"):
 		pass
 ### IP/UDP/626 serialnumberd	https://svn.nmap.org/nmap/nmap-payloads
-	elif (dport == "626") and (Payload == 'SNQUERY: 127.0.0.1:AAAAAA:xsvr'):		#nmap serialnumberd scan
+	elif (dport == "626") and (Payload == b'SNQUERY: 127.0.0.1:AAAAAA:xsvr'):		#nmap serialnumberd scan
 		ReportId("UC", sIP, "UDP_" + dport, "open", "serialnumberd/clientscanner likely nmap scan", (['scan', ]), prefs, dests)
 ### IP/UDP/636,992,993 make sure this follows snmp_altport line  Payload contains \x03www\x03163\x03com
 	elif dport in www163com_ports and Payload and (Payload.find(www163com_payload) > -1):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "scan_www163com/client", (['scan', ]), prefs, dests)
 ### IP/UDP/udp-ldaps=636
-	elif dport in fenull_scan_names and Payload.startswith("8") and Payload.endswith(fenulls):
+	elif dport in fenull_scan_names and Payload.startswith(b"8") and Payload.endswith(fenulls):
 		ReportId("UC", sIP, "UDP_" + dport, "open", fenull_scan_names[dport] + "/client", (['scan', ]), prefs, dests)
 ### IP/UDP/loadav=750
 	elif dport == '750' and Payload and Payload.find(nullbyte + 'NESSUS.ORG' + nullbyte) > -1:
@@ -1211,31 +1219,31 @@ def process_udp_ports(meta, p, prefs, dests):
 		else:
 			ReportId("UC", sIP, "UDP_" + dport, "open", "loadav/clientscanner nessus unregistered scanner IP address", (['scan', ]), prefs, dests)
 ### IP/UDP/winpopup	winpopup spam client
-	elif dport in ("1026", "1027", "1028") and Payload and ((Payload.find('Download Registry Update from:') > -1) or (Payload.find('CRITICAL ERROR MESSAGE! - REGISTRY DAMAGED AND CORRUPTED.') > -1) or (Payload.find('Your system registry is corrupted and needs to be cleaned immediately.') > -1) or (Payload.find('CRITICAL SYSTEM ERRORS') > -1)):
+	elif dport in ("1026", "1027", "1028") and Payload and ((Payload.find(b'Download Registry Update from:') > -1) or (Payload.find(b'CRITICAL ERROR MESSAGE! - REGISTRY DAMAGED AND CORRUPTED.') > -1) or (Payload.find(b'Your system registry is corrupted and needs to be cleaned immediately.') > -1) or (Payload.find(b'CRITICAL SYSTEM ERRORS') > -1)):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "winpopup/spamclient", (['malicious', ]), prefs, dests)
 ### IP/UDP/sharemouse=1046 rc_iamhere sharemouse	https://www.hybrid-analysis.com/sample/ca51df55d9c938bf0dc2ecbc10b148ec5ab8d259f3ea97f719a1a498e128ee05?environmentId=100
-	elif sport == "1046" and dport == "1046" and (meta['dMAC'] == "ff:ff:ff:ff:ff:ff") and Payload and Payload.startswith('rc_iamhere:6555:0:0:'):
+	elif sport == "1046" and dport == "1046" and (meta['dMAC'] == "ff:ff:ff:ff:ff:ff") and Payload and Payload.startswith(b'rc_iamhere:6555:0:0:'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "sharemouse/broadcastclient rc_iamhere sharemouse trojan", (['malicious', ]), prefs, dests)
 		ReportId("NA", sIP, "NA", Payload[20:], "sharemouse trojan", (['malicious', ]), prefs, dests)
 ### IP/UDP/udp1124=1124 used by printers
-	elif (dport == "1124") and (meta['dMAC'] == "ff:ff:ff:ff:ff:ff") and Payload and (Payload.find('std-scan-discovery-all') > -1):
+	elif (dport == "1124") and (meta['dMAC'] == "ff:ff:ff:ff:ff:ff") and Payload and (Payload.find(b'std-scan-discovery-all') > -1):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "udp1124/broadcast", ([]), prefs, dests)
 ### IP/UDP/search-agent=1234 used by stora NAS
-	elif (dport == "1234") and (meta['dMAC'] == "ff:ff:ff:ff:ff:ff") and Payload and (Payload.find('Hello there. I am at ') > -1):
+	elif (dport == "1234") and (meta['dMAC'] == "ff:ff:ff:ff:ff:ff") and Payload and (Payload.find(b'Hello there. I am at ') > -1):
 		HostnameMatch = StoraHostnameMatch.search(Payload)
 		if (HostnameMatch is not None) and (len(HostnameMatch.groups()) >= 1):
 			ReportId("UC", sIP, "UDP_" + dport, "open", "stora_nas_scan/broadcast hostname: " + HostnameMatch.group(1), ([]), prefs, dests)
 		else:
 			ReportId("UC", sIP, "UDP_" + dport, "open", "stora_nas_scan/broadcast", ([]), prefs, dests)
 ### IP/UDP/mssql=1434	Probable mssql attack
-	elif dport == "1434" and Payload and (Payload.find('Qh.dll') > -1):
+	elif dport == "1434" and Payload and (Payload.find(b'Qh.dll') > -1):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "mssql/clientattack", (['malicious', ]), prefs, dests)
 	elif dport == "1434" and Payload and Payload in (twobyte, twozero):		#https://portunus.net/2015/01/21/mc-sqlr-amplification/ .  Text refers to a one-byte \x02, but I've seen \x02\x00 as well.
 		ReportId("UC", sIP, "UDP_" + dport, "open", "mssql/client nmap ping scan", (['amplification', 'ddos', 'scan']), prefs, dests)
 ### IP/UDP/kdeconnect=1716
-	elif sport == "1716" and dport == "1716" and (meta['dMAC'] == "ff:ff:ff:ff:ff:ff") and Payload and (Payload.find('kdeconnect.') > -1):
+	elif sport == "1716" and dport == "1716" and (meta['dMAC'] == "ff:ff:ff:ff:ff:ff") and Payload and (Payload.find(b'kdeconnect.') > -1):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "kdeconnect/broadcast", ([]), prefs, dests)
-	elif sport == "1716" and dport == "1716" and Payload and (Payload.find('kdeconnect.') > -1):
+	elif sport == "1716" and dport == "1716" and Payload and (Payload.find(b'kdeconnect.') > -1):
 		ReportId("US", sIP, "UDP_" + sport, "open", 'kdeconnect/server', ([]), prefs, dests)
 		process_udp_ports.UDPManualServerDescription[FromPort] = "kdeconnect/server"
 
@@ -1253,16 +1261,16 @@ def process_udp_ports(meta, p, prefs, dests):
 	elif (sport == "1813") and (dport == "1900"):		#Scapy misparses this as Radius accounting, when it's SSDP.  Ignore.
 		pass
 ### IP/UDP/ssdp=1900	https://embeddedinn.wordpress.com/tutorials/upnp-device-architecture/
-	elif dport in ("1900", "1990", "32412", "32414") and dIP in ("255.255.255.255", "239.255.255.250", "ff02:0000:0000:0000:0000:0000:0000:000c", "ff05:0000:0000:0000:0000:0000:0000:000c", "ff08:0000:0000:0000:0000:0000:0000:000c", "ff0e:0000:0000:0000:0000:0000:0000:000c") and Payload and (Payload.startswith(('M-SEARCH', 'B-SEARCH'))):		#ssdp discover
+	elif dport in ("1900", "1990", "32412", "32414") and dIP in ("255.255.255.255", "239.255.255.250", "ff02:0000:0000:0000:0000:0000:0000:000c", "ff05:0000:0000:0000:0000:0000:0000:000c", "ff08:0000:0000:0000:0000:0000:0000:000c", "ff0e:0000:0000:0000:0000:0000:0000:000c") and Payload and (Payload.startswith((b'M-SEARCH', b'B-SEARCH'))):		#ssdp discover
 		if dport == "1900":
 			ssdp_warns = []
 		else:
 			ssdp_warns = ['nonstandardport']
 		#FIXME - pull in *cast type from meta
 		ReportId("UC", sIP, "UDP_" + dport, "open", "ssdp-discovery/broadmulticastclient", (ssdp_warns), prefs, dests)
-	elif (dport == "1900") and Payload and (Payload.startswith(('M-SEARCH', 'B-SEARCH'))):		#ssdp discover
+	elif (dport == "1900") and Payload and (Payload.startswith((b'M-SEARCH', b'B-SEARCH'))):		#ssdp discover
 		ReportId("UC", sIP, "UDP_" + dport, "open", "ssdp-discovery/client", ([]), prefs, dests)
-	elif (dport == "1900") and dIP in ("255.255.255.255", "239.255.255.250", "ff02:0000:0000:0000:0000:0000:0000:000c", "ff05:0000:0000:0000:0000:0000:0000:000c", "ff08:0000:0000:0000:0000:0000:0000:000c", "ff0e:0000:0000:0000:0000:0000:0000:000c") and Payload and (Payload.startswith('NOTIFY')):		#ssdp announcement
+	elif (dport == "1900") and dIP in ("255.255.255.255", "239.255.255.250", "ff02:0000:0000:0000:0000:0000:0000:000c", "ff05:0000:0000:0000:0000:0000:0000:000c", "ff08:0000:0000:0000:0000:0000:0000:000c", "ff0e:0000:0000:0000:0000:0000:0000:000c") and Payload and (Payload.startswith(b'NOTIFY')):		#ssdp announcement
 		additional_info = ''
 		LocationMatch = SSDPLocationMatch.search(Payload)
 		if (LocationMatch is not None) and (len(LocationMatch.groups()) >= 1):
@@ -1271,7 +1279,7 @@ def process_udp_ports(meta, p, prefs, dests):
 		if (ServerMatch is not None) and (len(ServerMatch.groups()) >= 1):
 			additional_info = additional_info + ' SSDP Server: ' + str(ServerMatch.group(1)).replace(',', ' ').strip()
 		ReportId("UC", sIP, "UDP_" + dport, "open", "ssdp-announce/client" + additional_info, ([]), prefs, dests)
-	elif dport in ("1900", "11211") and Payload and (Payload == 'GET / HTTP/1.1\r\n\r\n'):		#bogus GET packet
+	elif dport in ("1900", "11211") and Payload and (Payload == b'GET / HTTP/1.1\r\n\r\n'):		#bogus GET packet
 		ReportId("UC", sIP, "UDP_" + dport, "open", "ssdp-bogus-get/clientscanner", (['scan', ]), prefs, dests)
 	elif (dport == "1900") and dIP in ("239.255.255.250", "ff02:0000:0000:0000:0000:0000:0000:000c", "ff05:0000:0000:0000:0000:0000:0000:000c", "ff08:0000:0000:0000:0000:0000:0000:000c", "ff0e:0000:0000:0000:0000:0000:0000:000c"):		#ssdp
 		ShowPacket(p, meta, "IP/UDP/1900-multicast SSDP unknown method", HonorQuit, prefs, dests)
@@ -1283,20 +1291,20 @@ def process_udp_ports(meta, p, prefs, dests):
 	elif (dport == "2222") and Payload and Payload.startswith(ethernetip_list_identity):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "ethernetip/clientscanner", (['scan', ]), prefs, dests)
 ### IP/UDP/msopid=2223	http://www.crufty.net/sjg/blog/osx-and-office-do-not-mix.htm
-	elif (dport == "2223") and (meta['cast_type'] == "broadcast") and Payload and Payload.startswith('MSOPID'):
+	elif (dport == "2223") and (meta['cast_type'] == "broadcast") and Payload and Payload.startswith(b'MSOPID'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "msopid/clientscanner", (['scan', ]), prefs, dests)
 ### IP/UDP/digiman=2362
-	elif (dport == "2362") and Payload and Payload.startswith('DIGI'):
+	elif (dport == "2362") and Payload and Payload.startswith(b'DIGI'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "digiman/client", ([]), prefs, dests)
 ### IP/UDP/sybase=2638
-	elif (dport == "2638") and Payload and (Payload.find('CONNECTIONLESS_TDS') > -1):
+	elif (dport == "2638") and Payload and (Payload.find(b'CONNECTIONLESS_TDS') > -1):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "sybase/client", (['scan', ]), prefs, dests)
 ### IP/UDP/mdap-port=3235
-	elif (dport == "3235") and Payload and Payload.startswith('ANT-SEARCH MDAP/1.1'):
+	elif (dport == "3235") and Payload and Payload.startswith(b'ANT-SEARCH MDAP/1.1'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "mdap-port/client", ([]), prefs, dests)
 ### IP/UDP/enpc=3289
 	elif (dport == "3289") and (meta['dMAC'] == "ff:ff:ff:ff:ff:ff"):
-		if Payload and (Payload.startswith('EPSON')):
+		if Payload and (Payload.startswith(b'EPSON')):
 			ReportId("UC", sIP, "UDP_" + dport, "open", "enpc/broadcast", ([]), prefs, dests)
 		else:
 			UnhandledPacket(p, prefs, dests)
@@ -1305,7 +1313,7 @@ def process_udp_ports(meta, p, prefs, dests):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "teredo/client", ([]), prefs, dests)
 		UnhandledPacket(p, prefs, dests)
 ### IP/UDP/upnp-discovery=3702
-	elif (dport == "3702") and Payload and (Payload.startswith('<?xml') or Payload.find('://schemas.xmlsoap.org/') > -1):
+	elif (dport == "3702") and Payload and (Payload.startswith(b'<?xml') or Payload.find(b'://schemas.xmlsoap.org/') > -1):
 		if dIP in ("239.255.255.250", "ff02::c", "ff02:0000:0000:0000:0000:0000:0000:000c"):
 			ReportId("UC", sIP, "UDP_" + dport, "open", "upnp-discovery/broadcastclient", ([]), prefs, dests)
 		else:
@@ -1318,7 +1326,7 @@ def process_udp_ports(meta, p, prefs, dests):
 	elif (dport == "3865") and (dIP == "255.255.255.255"):					#XPL, http://wiki.xplproject.org.uk/index.php/Main_Page
 		ReportId("UC", sIP, "UDP_" + dport, "open", "xpl/client", ([]), prefs, dests)
 ### IP/UDP/vertx=4070	https://github.com/brad-anton/VertX/blob/master/VertX_Query.py
-	elif (dport == "4070") and (Payload == 'discover;013;'):
+	elif (dport == "4070") and (Payload == b'discover;013;'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "vertx/client", (['scan', ]), prefs, dests)
 
 #__ haslayer(ESP)
@@ -1336,11 +1344,11 @@ def process_udp_ports(meta, p, prefs, dests):
 			ShowPacket(p, meta, "IP/UDP/unhandled packet with ESP layer", HonorQuit, prefs, dests)
 
 ### IP/UDP/drobo=5002 used by drobo NAS
-	elif (dport == "5002") and Payload and Payload.startswith('DRINETTM'):
+	elif (dport == "5002") and Payload and Payload.startswith(b'DRINETTM'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "drobo_nas_scan/" + meta['cast_type'] + "client", ([]), prefs, dests)
 ### IP/UDP/vonage
 	elif (sport == "5061") and (dport == "5061") and (dIP in vonage_sip_servers):		#Vonage SIP client
-		if Payload and (Payload.find('.vonage.net:5061 SIP/2.0') > -1):
+		if Payload and (Payload.find(b'.vonage.net:5061 SIP/2.0') > -1):
 			SipMatch = process_udp_ports.SipPhoneMatch.search(Payload)
 			if (SipMatch is not None) and (len(SipMatch.groups()) >= 1):
 				ReportId("UC", sIP, "UDP_" + dport, "open", "sip/vonage_client, phone number: " + SipMatch.group(1), ([]), prefs, dests)
@@ -1349,7 +1357,7 @@ def process_udp_ports(meta, p, prefs, dests):
 		else:
 			UnhandledPacket(p, prefs, dests)
 	elif (sport == "5061") and (dport == "5061") and (sIP in vonage_sip_servers):	#Vonage SIP server
-		if Payload and (Payload.find('.vonage.net:5061>') > -1):
+		if Payload and (Payload.find(b'.vonage.net:5061>') > -1):
 			ReportId("US", sIP, "UDP_" + sport, "open", "sip/vonage_server", ([]), prefs, dests)
 			process_udp_ports.UDPManualServerDescription[FromPort] = "sip/vonage_server"
 		else:
@@ -1381,60 +1389,60 @@ def process_udp_ports(meta, p, prefs, dests):
 	elif (dport == "5405") and (meta['dMAC'] == "ff:ff:ff:ff:ff:ff"):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "corosync/broadcast", ([]), prefs, dests)
 ### IP/UDP/pcanywherestat=5632 client
-	elif (dport == "5632") and Payload and (Payload.find('NQ') > -1):
+	elif (dport == "5632") and Payload and (Payload.find(b'NQ') > -1):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "pcanywherestat/clientscanner", (['scan', ]), prefs, dests)
 	elif (sport == "6515") and (dport == "6514") and (dIP == "255.255.255.255"):		#mcafee ASaP broadcast, looking for a proxy out.  http://www.myasap.de/intl/EN/content/virusscan_asap/faq_new.asp
-		if Payload and (Payload.find('<rumor version=') > -1):
+		if Payload and (Payload.find(b'<rumor version=') > -1):
 			ReportId("UC", sIP, "UDP_" + dport, "open", "asap/client", ([]), prefs, dests)
 		else:
 			UnhandledPacket(p, prefs, dests)
 ### IP/UDP/coap=5683	https://tools.ietf.org/html/rfc6690 , http://www.herjulf.se/download/coap-2013-fall.pdf , https://tools.ietf.org/html/rfc7252#section-3
-	elif (dport == "5683") and Payload and (Payload.startswith(('@', 'P', '`', 'p')) or (Payload.find('.well-known') > -1)):		# '@' confirmable, 'P' non-confirmable, '`' acknowledgement, or 'p' Reset  (The acknowledgment and reset may have to go in sport == "5683" instead)
+	elif (dport == "5683") and Payload and (Payload.startswith((b'@', b'P', b'`', b'p')) or (Payload.find(b'.well-known') > -1)):		# '@' confirmable, 'P' non-confirmable, '`' acknowledgement, or 'p' Reset  (The acknowledgment and reset may have to go in sport == "5683" instead)
 		ReportId("UC", sIP, "UDP_" + dport, "open", "coap/client", ([]), prefs, dests)
 ### IP/UDP/bt-lpd=6771	https://security.stackexchange.com/questions/102766/wireshark-reveals-suspicious-udp-traffic-sending-to-a-bogon-ip-address
-	elif (dport == "6771") and (dIP == "239.192.152.143") and Payload and (Payload.startswith('BT-SEARCH * HTTP/1.1')):
+	elif (dport == "6771") and (dIP == "239.192.152.143") and Payload and (Payload.startswith(b'BT-SEARCH * HTTP/1.1')):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "bt-lpd/client", ([]), prefs, dests)
 ### IP/UDP/unreal_status=7778	https://arp242.net/weblog/online_unreal_tournament_server_browser_with_pcntl_fork()
-	elif (dport == "7778") and Payload and Payload.startswith('\\status\\'):
+	elif (dport == "7778") and Payload and Payload.startswith(b'\\status\\'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "unreal_status/client", ([]), prefs, dests)
 ### IP/UDP/kissdvd=8000	https://www.tapatalk.com/groups/helplinedirect/getting-linksys-kiss-1600-to-work-with-ubuntu-t35.html
-	elif (dport == "8000") and Payload and Payload == 'ARE_YOU_KISS_PCLINK_SERVER?':
+	elif (dport == "8000") and Payload and Payload == b'ARE_YOU_KISS_PCLINK_SERVER?':
 		ReportId("UC", sIP, "UDP_" + dport, "open", "kissdvd/client", (['scan', ]), prefs, dests)
 ### IP/UDP/canon-bjnp2=8610
-	elif (dport == "8610") and meta['cast_type'] and Payload and (Payload.startswith('MFNP')):
+	elif (dport == "8610") and meta['cast_type'] and Payload and (Payload.startswith(b'MFNP')):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "udp8610/" + meta['cast_type'], ([]), prefs, dests)
 ### IP/UDP/canon-bjnp2=8612		https://support.usa.canon.com/kb/index?page=content&id=ART109227
-	elif dport in ("8612", "8613") and meta['cast_type'] and Payload and (Payload.startswith('BJNP')):
+	elif dport in ("8612", "8613") and meta['cast_type'] and Payload and (Payload.startswith(b'BJNP')):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "canon-bjnp2/" + meta['cast_type'], ([]), prefs, dests)
-	elif dport in ("8612", "8613") and dIP in ('ff02::1', 'ff02:0000:0000:0000:0000:0000:0000:0001') and Payload and (Payload.startswith('BJNP')):
+	elif dport in ("8612", "8613") and dIP in ('ff02::1', 'ff02:0000:0000:0000:0000:0000:0000:0001') and Payload and (Payload.startswith(b'BJNP')):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "canon-bjnp2/client", ([]), prefs, dests)
 ### IP/UDP/canon-bjnb-bnjb=8612
-	elif (dport == "8612") and meta['cast_type'] and Payload and (Payload.startswith(('BNJB', 'BJNB'))):
+	elif (dport == "8612") and meta['cast_type'] and Payload and (Payload.startswith((b'BNJB', b'BJNB'))):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "canon-bjnb-bnjb/" + meta['cast_type'], ([]), prefs, dests)
 ### IP/UDP/itunesdiscovery=8765
 	elif dport == "8765":									#XPL, http://wiki.xplproject.org.uk/index.php/Main_Page
 		ReportId("UC", sIP, "UDP_" + dport, "open", "itunesdiscovery/broadcast", ([]), prefs, dests)		#'portonlysignature'
 ### IP/UDP/sunwebadmin=8800
-	elif dport == "8800" and Payload and Payload.startswith('DHGET'):				#http://sites.ieee.org/neworleans/files/2016/12/12052016-Presentation-IoT-security-website-copy.pdf
+	elif dport == "8800" and Payload and Payload.startswith(b'DHGET'):				#http://sites.ieee.org/neworleans/files/2016/12/12052016-Presentation-IoT-security-website-copy.pdf
 		ReportId("UC", sIP, "UDP_" + dport, "open", "sunwebadmin/client possibly Mirai", (['dos', ]), prefs, dests)
 ### IP/UDP/aoldns
 	elif (sport in ("9052", "9053", "9054")) and (sIP in aol_dns_servers):	#Possibly AOL dns response
-		if Payload and (Payload.find('dns-01') > -1):
+		if Payload and (Payload.find(b'dns-01') > -1):
 			ReportId("US", sIP, "UDP_" + sport, "open", "aoldns/server", ([]), prefs, dests)
 			process_udp_ports.UDPManualServerDescription[FromPort] = "aoldns/server"
 		else:
 			UnhandledPacket(p, prefs, dests)
 ### IP/UDP/teamspeak3=9987,59596 client	https://github.com/TeamSpeak-Systems/ts3init_linux_netfilter_module
-	elif dport in ("9987", "59596") and Payload and (Payload.startswith('TS3INIT1')):
+	elif dport in ("9987", "59596") and Payload and (Payload.startswith(b'TS3INIT1')):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "teamspeak3/clientscanner", (['scan', 'dos', ]), prefs, dests)
 ### UP/UDP/ubnt-discover=10001	https://github.com/headlesszeke/ubiquiti-probing
 	elif dport == "10001" and Payload and (Payload == ubiquiti_discover):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "ubnt-discover/clientscanner", (['scan', ]), prefs, dests)
 ### IP/UDP/memcached=11211		https://blog.cloudflare.com/memcrashed-major-amplification-attacks-from-port-11211/	https://github.com/memcached/memcached/blob/master/doc/protocol.txt
 	elif dport in ("1121", "11211") and Payload:
-		if ((Payload.find('gets ') > -1) or (Payload.find('stats') > -1)):
+		if ((Payload.find(b'gets ') > -1) or (Payload.find(b'stats') > -1)):
 			ReportId("UC", sIP, "UDP_" + dport, "open", 'memcached/client: Likely spoofed and DDOSed source IP', (['amplification', 'malicious', 'spoofed']), prefs, dests)
-		elif Payload.find('version') > -1:
+		elif Payload.find(b'version') > -1:
 			ReportId("UC", sIP, "UDP_" + dport, "open", 'memcached/client', (['scan', ]), prefs, dests)
 		else:
 			ShowPacket(p, meta, "IP/UDP/memcached=1121 or 11211 request but non-gets/stats/version", HonorQuit, prefs, dests)
@@ -1442,18 +1450,18 @@ def process_udp_ports(meta, p, prefs, dests):
 		ReportId("US", sIP, "UDP_" + sport, "open", 'memcached/server', ([]), prefs, dests)
 		process_udp_ports.UDPManualServerDescription[FromPort] = "memcached/server"
 ### IP/UDP/zmapscanner=1707,3269,3544,6619,1121[45]								https://zmap.io/ , https://github.com/zmap/zmap
-	elif dport in zmap_host_www_ports and (Payload == 'GET / HTTP/1.1\r\nHost: www\r\n\r\n'):
+	elif dport in zmap_host_www_ports and (Payload == b'GET / HTTP/1.1\r\nHost: www\r\n\r\n'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", 'zmapscanner/client', (['scan', ]), prefs, dests)
 ### IP/UDP/makerbotdiscovery=12307		https://github.com/gryphius/mini-makerbot-hacking/blob/master/doc/makerbotmini.md
 	elif (sport == "12309") and (dport == "12307") and meta['cast_type']:
-		if Payload and (Payload.startswith('{"command": "broadcast"')):
+		if Payload and (Payload.startswith(b'{"command": "broadcast"')):
 			ReportId("UC", sIP, "UDP_" + dport, "open", "makerbotdiscovery/" + meta['cast_type'], ([]), prefs, dests)
 ### IP/UDP/12314
 	elif dport == "12314" and Payload and Payload.startswith(fournulls):					#Actually,lots more nulls than 4.
 		ReportId("UC", sIP, "UDP_" + dport, "open", 'udp12314/client', (['scan', ]), prefs, dests)
 ### IP/UDP/dropbox=17500	http://whatportis.com/ports/17500_dropbox-lansync-protocol-db-lsp-used-to-synchronize-file-catalogs-between-dropbox-clients-on-your-local-network
 	elif (sport == "17500") and (dport == "17500"):
-		if Payload and (Payload.find('"host_int"') > -1):
+		if Payload and (Payload.find(b'"host_int"') > -1):
 			ReportId("UC", sIP, "UDP_" + dport, "open", "dropbox/client", ([]), prefs, dests)
 		else:
 			UnhandledPacket(p, prefs, dests)
@@ -1469,7 +1477,7 @@ def process_udp_ports(meta, p, prefs, dests):
 		ReportId("US", sIP, "UDP_" + sport, "open", "googlemeet/server missing sIP:" + sIP, ([]), prefs, dests)		#'portonlysignature'
 		process_udp_ports.UDPManualServerDescription[FromPort] = "googlemeet/server missing sIP:" + sIP
 ### IP/UDP/develo=19375	https://flambda.de/2013/06/18/audioextender/	https://ubuntuforums.org/showthread.php?t=1942539	https://www2.devolo.com/products/dLAN-Powerline-1485-Mbps/dLAN-Wireless-extender/data/Data-sheet-dLAN-Wireless-extender-Starter-Kit-com.pdf
-	elif dport == "19375" and meta['cast_type'] and Payload.startswith('whoisthere'):
+	elif dport == "19375" and meta['cast_type'] and Payload.startswith(b'whoisthere'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "develo/" + meta['cast_type'] + "client", ([]), prefs, dests)		#Note, payload is "whoisthere\x00' + str(ip.address) + '\x00' + str(subnet_mask) + '\x00\x001\x00'
 ### IP/UDP/skype=all over the place
 	elif (dport in skype_ports) and (dIP in skype_hosts):
@@ -1489,7 +1497,7 @@ def process_udp_ports(meta, p, prefs, dests):
 		process_udp_ports.UDPManualServerDescription[FromPort] = "skype/server missing sIP:" + sIP
 ### IP/UDP/pyzor=24441
 	elif dport == "24441":											#Pyzor
-		if Payload and (Payload.find('User:') > -1):
+		if Payload and (Payload.find(b'User:') > -1):
 			ReportId("UC", sIP, "UDP_" + dport, "open", "pyzor/client", ([]), prefs, dests)
 		else:
 			UnhandledPacket(p, prefs, dests)
@@ -1499,7 +1507,7 @@ def process_udp_ports(meta, p, prefs, dests):
 ### IP/UDP/halflife=27005 and others
 	elif (sport == "27005") and (dport in ('27015', '27016', '27017')):					#Halflife client live game
 		ReportId("UC", sIP, "UDP_" + dport, "open", "halflife/client", ([]), prefs, dests)				#'portonlysignature'
-	elif (dport == "27013") and (dIP == "207.173.177.12"):							#variable payload, so can't Payload and (Payload.find('Steam.exe') > -1)				#Halflife client
+	elif (dport == "27013") and (dIP == "207.173.177.12"):							#variable payload, so can't Payload and (Payload.find(b'Steam.exe') > -1)				#Halflife client
 		ReportId("UC", sIP, "UDP_" + dport, "open", "halflife/client", ([]), prefs, dests)
 	elif (sport == "27013") and (sIP == "207.173.177.12"):							#halflife server
 		ReportId("US", sIP, "UDP_" + sport, "open", "halflife/server", ([]), prefs, dests)
@@ -1507,24 +1515,24 @@ def process_udp_ports(meta, p, prefs, dests):
 	elif (sport in '27015', '27016', '27017') and (dport == "27005"):					#halflife server live game
 		ReportId("US", sIP, "UDP_" + sport, "open", "halflife/server", ([]), prefs, dests)				#'portonlysignature'
 		process_udp_ports.UDPManualServerDescription[FromPort] = "halflife/server"
-	elif dport in ("27015", "27016", "27025", "27026"):							#Variable payload, so can't: Payload and (Payload.find('basic') > -1)	#Halflife client
+	elif dport in ("27015", "27016", "27025", "27026"):							#Variable payload, so can't: Payload and (Payload.find(b'basic') > -1)	#Halflife client
 		ReportId("UC", sIP, "UDP_" + dport, "open", "halflife/client", ([]), prefs, dests)				#'portonlysignature'
-	elif sport in ("27015", "27016", "27025", "27026"):							#Variable payload, so can't: Payload and (Payload.find('basic') > -1)	#Halflife client
+	elif sport in ("27015", "27016", "27025", "27026"):							#Variable payload, so can't: Payload and (Payload.find(b'basic') > -1)	#Halflife client
 		ReportId("US", sIP, "UDP_" + sport, "open", "halflife/server", ([]), prefs, dests)				#'portonlysignature'
 		process_udp_ports.UDPManualServerDescription[FromPort] = "halflife/server"
 	elif (dport == "27017") and (dIP in SteamFriendsServers):	#Steamfriends client
-		if Payload and (Payload.find('VS01') > -1):
+		if Payload and (Payload.find(b'VS01') > -1):
 			ReportId("UC", sIP, "UDP_" + dport, "open", "steamfriends/client", ([]), prefs, dests)
 		else:
 			UnhandledPacket(p, prefs, dests)
 	elif (sport == "27017") and (sIP in SteamFriendsServers):	#Steamfriends server
-		if Payload and (Payload.find('VS01') > -1):
+		if Payload and (Payload.find(b'VS01') > -1):
 			ReportId("US", sIP, "UDP_" + sport, "open", "steamfriends/server", ([]), prefs, dests)
 			process_udp_ports.UDPManualServerDescription[FromPort] = "steamfriends/server"
 		else:
 			UnhandledPacket(p, prefs, dests)
 	elif sport in ("21020", "21250", "27016", "27017", "27018", "27030", "27035", "27040", "28015"):	#halflife server
-		if Payload and (Payload.find('Team Fortress') > -1):
+		if Payload and (Payload.find(b'Team Fortress') > -1):
 			ReportId("US", sIP, "UDP_" + sport, "open", "halflife/server", ([]), prefs, dests)			#'portonlysignature'
 			process_udp_ports.UDPManualServerDescription[FromPort] = "halflife/server"
 		else:
@@ -1542,49 +1550,49 @@ def process_udp_ports(meta, p, prefs, dests):
 	elif (dport == "27036") and Payload and (Payload.startswith(stream_ihs_discovery_header)):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "stream-ihs-discovery/client", ([]), prefs, dests)
 	elif dport in halflife_altport:										#Halflife client
-		if Payload and (Payload.find('Source Engine Query') > -1):
+		if Payload and (Payload.find(b'Source Engine Query') > -1):
 			ReportId("UC", sIP, "UDP_" + dport, "open", "halflife/client", ([]), prefs, dests)			#'portonlysignature'
 		else:
 			UnhandledPacket(p, prefs, dests)
 ### IP/UDP/lima=25213	https://support.meetlima.com/hc/en-us/articles/115004950326-README-document
-	elif dport == "25213" and Payload and (Payload.startswith('ZVPN')):
+	elif dport == "25213" and Payload and (Payload.startswith(b'ZVPN')):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "limavpn/client", (['tunnel', ]), prefs, dests)
 ### IP/UDP/openarena=27960	https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=665656 , http://openarena.ws/board/index.php?topic=4391.0 , http://blog.alejandronolla.com/2013/06/24/amplification-ddos-attack-with-quake3-servers-an-analysis-1-slash-2/
-	elif (dport == "27960") and Payload and Payload.startswith(eight_fs + 'getstatus'):
+	elif (dport == "27960") and Payload and Payload.startswith(eight_fs + b'getstatus'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", 'openarena-quake3/client getstatus: Likely spoofed and DDOSed source IP', (['amplification', 'dos', 'spoofed']), prefs, dests)
 ### IP/UDP/hap=28784	https://hal.inria.fr/hal-01456891/document
-	elif (dport == "28784") and Payload and Payload.startswith('HAP'):
+	elif (dport == "28784") and Payload and Payload.startswith(b'HAP'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", 'hap/client', (['scan', ]), prefs, dests)
 ### IP/UDP/traceroute
 	elif ((dport >= "33434") and (dport <= "33524")):	#udptraceroute client
 		ReportId("UC", sIP, "UDP_33434", "open", "udptraceroute/client", ([]), prefs, dests)				#'portonlysignature'
 ### IP/UDP/lima=33612	https://support.meetlima.com/hc/en-us/articles/115004950326-README-document
-	elif dport == "33612" and Payload and (Payload.startswith('LIMA')):
+	elif dport == "33612" and Payload and (Payload.startswith(b'LIMA')):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "lima/client", ([]), prefs, dests)
 ### IP/UDP/tzsp=37008	https://korniychuk.org.ua/instruction/live-packet-captures-using-mikrotik-routeros-and-wireshark/
 	elif dport == "37008":
 		ReportId("UC", sIP, "UDP_" + dport, "open", "tzsp/client", (['tunnel', ]), prefs, dests)
 		ShowPacket(p, meta, "IP/UDP/TZSP", HonorQuit, prefs, dests)
 ### IP/UDP/halflife=40348
-	elif dport == "40348" and Payload and (Payload.find('HLS') > -1):
+	elif dport == "40348" and Payload and (Payload.find(b'HLS') > -1):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "halflife/client", ([]), prefs, dests)
 ### IP/UDP/crestron-cip=41794	https://media.defcon.org/DEF%20CON%2026/DEF%20CON%2026%20presentations/Ricky%20Lawshae/DEFCON-26-Lawshae-Who-Controls-the-Controllers-Hacking-Crestron.pdf
-	elif (sport == "41794") and (dport == "41794") and Payload and Payload.startswith(crestron_prelude + 'hostname'):
+	elif (sport == "41794") and (dport == "41794") and Payload and Payload.startswith(crestron_prelude + b'hostname'):
 		ReportId("UC", sIP, "UDP_" + dport, "open", 'crestron-cip/clientscanner', (['scan', ]), prefs, dests)
 ### IP/UDP/zengge-bulb=48899 client https://github.com/vikstrous/zengge-lightcontrol/blob/master/README.md
-	elif (dport == "48899") and Payload and (Payload.find('HF-A11ASSISTHREAD') > -1):
+	elif (dport == "48899") and Payload and (Payload.find(b'HF-A11ASSISTHREAD') > -1):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "zengge-bulb/clientscanner", (['scan', ]), prefs, dests)
 ### IP/UDP/linkproof=49153 client	https://eromang.zataz.com/2010/04/28/suc007-activities-on-49153udp-linkproof-proximity-advanced/
-	elif (dport == "49153") and Payload and (Payload.startswith('linkproof.proximity.advanced')):
+	elif (dport == "49153") and Payload and (Payload.startswith(b'linkproof.proximity.advanced')):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "radware-linkproof/clientscanner", (['scan', ]), prefs, dests)
 ### IP/UDP/netis-backdoor-53413=53413 client, exploting Netis router backdoor: https://isc.sans.edu/forums/diary/Surge+in+Exploit+Attempts+for+Netis+Router+Backdoor+UDP53413/21337/
-	elif dport == "53413":							#To limit this signature to just shellcode, add the following tests to this line:   and Payload and (Payload.find('; chmod 777 ') > -1)
+	elif dport == "53413":							#To limit this signature to just shellcode, add the following tests to this line:   and Payload and (Payload.find(b'; chmod 777 ') > -1)
 		ReportId("UC", sIP, "UDP_" + dport, "open", "netis-backdoor-53413/client", (['malicious', ]), prefs, dests)	#'portonlysignature'
 ### IP/UDP/logitech-arx=54915		http://support.moonpoint.com/network/udp/port_54915/
 	elif sport == "54915" and dport == "54915" and meta['cast_type']:
 		ReportId("UC", sIP, "UDP_" + dport, "open", "logitech-arx/" + meta['cast_type'] + "client", ([]), prefs, dests)	#'portonlysignature'
 ### IP/UDP/brother-announce=54925 and 54926 used by brother printers		http://ww2.chemistry.gatech.edu/software/Drivers/Brother/MFC-9840CDW/document/ug/usa/html/sug/index.html?page=chapter7.html
-	elif (dport in ("54925", "54926")) and meta['cast_type'] and Payload and (Payload.find('NODENAME=') > -1):
+	elif (dport in ("54925", "54926")) and meta['cast_type'] and Payload and (Payload.find(b'NODENAME=') > -1):
 		BrotherMatch = BrotherAnnounceMatch.search(Payload)
 		if (BrotherMatch is not None) and (len(BrotherMatch.groups()) >= 4):
 			#In the packets I've seen, groups 1, 2, and 3 are ip addresses (1 ipv4 and 2 ipv6).  Group 4 is a nodename ("BRWF" + uppercase mac address, no colons)
@@ -1595,12 +1603,12 @@ def process_udp_ports(meta, p, prefs, dests):
 		else:
 			ReportId("UC", sIP, "UDP_" + dport, "open", "brother-announce/" + meta['cast_type'], ([]), prefs, dests)
 ### IP/UDP/spotify-broadcast=57621		https://mrlithium.blogspot.com/2011/10/spotify-and-opting-out-of-spotify-peer.html
-	elif (dport == "57621") and Payload and (Payload.startswith('SpotUdp')):
+	elif (dport == "57621") and Payload and (Payload.startswith(b'SpotUdp')):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "spotify/" + meta['cast_type'] + "client", ([]), prefs, dests)
 ### IP/UDP/probes with empty payloads
-	elif dport in empty_payload_ports and Payload == '':
+	elif dport in empty_payload_ports and Payload == b'':
 		ReportId("UC", sIP, "UDP_" + dport, "open", "empty-payload/client", ([]), prefs, dests)
-	elif Payload == '':
+	elif Payload == b'':
 		ReportId("UC", sIP, "UDP_" + dport, "open", "empty-payload/client Port not registered", ([]), prefs, dests)
 		UnhandledPacket(p, prefs, dests)
 ### IP/UDP/quake3 disconnect amplification		http://blog.alejandronolla.com/2013/08/05/amplification-ddos-attack-with-quake3-servers-an-analysis-2-slash-2/
@@ -1608,12 +1616,12 @@ def process_udp_ports(meta, p, prefs, dests):
 		ReportId("UC", sIP, "UDP_" + dport, "open", 'quake3/client: Disconnect, likely spoofed and DDOSed source IP', (['amplification', 'malicious', 'spoofed']), prefs, dests)
 		UnhandledPacket(p, prefs, dests)
 ### IP/UDP/bt-dht		http://www.bittorrent.org/beps/bep_0005.html , https://isc.sans.edu/forums/diary/Identifying+applications+using+UDP+payload/6031/
-	elif Payload and Payload.find(':id') > -1 and ((Payload.find(':info_hash') > -1 and Payload.find(':get_peers') > -1) or Payload.find(':ping') > -1 or Payload.find('9:find_node') > -1):	#Unfortunately, can run on any port
+	elif Payload and Payload.find(b':id') > -1 and ((Payload.find(b':info_hash') > -1 and Payload.find(b':get_peers') > -1) or Payload.find(b':ping') > -1 or Payload.find(b'9:find_node') > -1):	#Unfortunately, can run on any port
 		ReportId("UC", sIP, "UDP_" + dport, "open", 'bt-dht-scan/clientscanner', (['scan', ]), prefs, dests)
-	elif Payload and Payload.find(':id') > -1 and Payload.find(':token') > -1 and (Payload.find(':nodes') > -1 or Payload.find(':values')):
+	elif Payload and Payload.find(b':id') > -1 and Payload.find(b':token') > -1 and (Payload.find(b':nodes') > -1 or Payload.find(b':values')):
 		ReportId("US", sIP, "UDP_" + sport, "open", 'bt-dht/server', ([]), prefs, dests)
 		process_udp_ports.UDPManualServerDescription[FromPort] = "bt-dht/server"
-	elif Payload and Payload.find('; wget ') > -1 and Payload.find('; sh ') > -1 and Payload.find('; rm -rf ') > -1:
+	elif Payload and Payload.find(b'; wget ') > -1 and Payload.find(b'; sh ') > -1 and Payload.find(b'; rm -rf ') > -1:
 		ReportId("UC", sIP, "UDP_" + dport, "open", 'shellcode/clientscanner', (['scan', 'malicious']), prefs, dests)
 	elif Payload and Payload.startswith(a0_string):									#Payload starting with A\x00
 		UnhandledPacket(p, prefs, dests)
@@ -1636,11 +1644,11 @@ def process_udp_ports(meta, p, prefs, dests):
 		UnhandledPacket(p, prefs, dests)
 	elif sport == "53":												#source port 53.  I've seen some coming back from port 53 with qr=0, request.  Hmmm.
 		UnhandledPacket(p, prefs, dests)
-	elif sIP in shodan_hosts and Payload == fournulls + 'abcdefgh':
+	elif sIP in shodan_hosts and Payload == fournulls + b'abcdefgh':
 		ReportId("UC", sIP, "UDP_" + dport, "open", "shodan_host/clientscanner abcdefgh", (['scan', ]), prefs, dests)
 	elif sIP in shodan_hosts:
 		ReportId("UC", sIP, "UDP_" + dport, "open", "shodan_host/clientscanner", (['scan', ]), prefs, dests)
-	elif Payload == fournulls + 'abcdefgh':
+	elif Payload == fournulls + b'abcdefgh':
 		ReportId("UC", sIP, "UDP_" + dport, "open", "shodan_host/clientscanner abcdefgh Unlisted host", (['scan', ]), prefs, dests)
 	elif sIP in known_scan_ips:
 		ReportId("UC", sIP, "UDP_" + dport, "open", "udp/clientscanner known scanner", (['scan', ]), prefs, dests)
@@ -1673,6 +1681,10 @@ def processpacket(p):
 		processpacket.end_stamp = None
 	if "end_string" not in processpacket.__dict__:
 		processpacket.end_string = ''
+	if "current_stamp" not in processpacket.__dict__:
+		processpacket.current_stamp = None
+	if "current_string" not in processpacket.__dict__:
+		processpacket.current_string = ''
 
 	if "ClosedUDPPortsReceived" not in processpacket.__dict__:
 		processpacket.ClosedUDPPortsReceived = {}	#Dictionary of sets.  Key is expanded IP address, value is a set of "IP,Proto_Port" strings that sent back "closed".  High counts of these are systems that are scanning for ports.
@@ -1690,13 +1702,13 @@ def processpacket(p):
 				ShowPacket(p, meta, "Unknown layer list", HonorQuit, prefs, dests)
 				quit()
 
-	this_stamp, this_string = packet_timestamps(p)
-	if not processpacket.start_stamp or this_stamp < processpacket.start_stamp:
-		processpacket.start_stamp = this_stamp
-		processpacket.start_string = this_string
-	if not processpacket.end_stamp or this_stamp > processpacket.end_stamp:
-		processpacket.end_stamp = this_stamp
-		processpacket.end_string = this_string
+	processpacket.current_stamp, processpacket.current_string = packet_timestamps(p)
+	if not processpacket.start_stamp or processpacket.current_stamp < processpacket.start_stamp:
+		processpacket.start_stamp = processpacket.current_stamp
+		processpacket.start_string = processpacket.current_string
+	if not processpacket.end_stamp or processpacket.current_stamp > processpacket.end_stamp:
+		processpacket.end_stamp = processpacket.current_stamp
+		processpacket.end_string = processpacket.current_string
 
 	meta = generate_meta_from_packet(p, prefs, dests)
 	#Convert:
@@ -1714,7 +1726,7 @@ def processpacket(p):
 	if p.getlayer(Raw):
 		Payload = p.getlayer(Raw).load
 	else:
-		Payload = ""
+		Payload = b""
 
 
 ### Spanning Tree Protocol
@@ -1857,7 +1869,7 @@ def processpacket(p):
 ### IPv4/ICMPv4/Echo Request=8
 			elif Type == 8:
 				#FIXME - check payload for ping sender type, perhaps
-				if Payload.find('liboping -- ICMP ping library') > -1:
+				if Payload.find(b'liboping -- ICMP ping library') > -1:
 					ReportId("IP", sIP, "IP", "live", 'oping icmp echo request scanner', (['scan', ]), prefs, dests)
 				else:
 					ReportId("IP", sIP, "IP", "live", 'icmp echo request scanner', (['scan', ]), prefs, dests)
@@ -2319,6 +2331,7 @@ if __name__ == "__main__":
 	parser.add_argument('--nxdomain', help='Show NXDomain DNS answers', required=False, default=False, action='store_true')
 	parser.add_argument('--creds', help='Show credentials as well', required=False, default=False, action='store_true')
 	parser.add_argument('-b', '--bpf', help='BPF to restrict which packets are processed', required=False, default='')
+	parser.add_argument('--timestamp', help='Show timestamp and time string in 6th and 7th fields', required=False, default=False, action='store_true')
 	parser.add_argument('--debuglayers', required=False, default=False, action='store_true', help=argparse.SUPPRESS)						#Debug scapy layers, hidden option
 	(parsed, unparsed) = parser.parse_known_args()
 	cl_args = vars(parsed)
