@@ -508,7 +508,7 @@ def MacDataDict(MacFiles, prefs, dests):
 	for MacFile in MacFiles:
 		if os.path.isfile(MacFile):
 			try:
-				MacHandle = open(MacFile, 'r')
+				MacHandle = open(MacFile, 'r', errors='ignore')
 
 				for line in MacHandle:
 					if (len(line) >= 8) and (line[2] == ':') and (line[5] == ':'):
