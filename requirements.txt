@@ -1,3 +1,4 @@
 ipaddress
+maxminddb-geolite2
 pytz
 scapy>=2.4.0

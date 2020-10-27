@@ -1,4 +1,4 @@
-FROM python:2.7-alpine
+FROM python:3.9-alpine
 
 # Shorten common strings
 ARG GH=https://raw.githubusercontent.com
@@ -9,6 +9,7 @@ ADD $GH/nmap/nmap/master/nmap-mac-prefixes              $USR/nmap/nmap-mac-prefi
 ADD $GH/wireshark/wireshark/master/manuf                $USR/wireshark/manuf
 ADD $GH/royhills/arp-scan/master/ieee-oui.txt           $USR/arp-scan/ieee-oui.txt
 ADD $GH/nmap/nmap/master/nmap-service-probes            $USR/nmap/nmap-service-probes
+ADD $GH/p0f/p0f/v2.0.8/p0f.fp                           /etc/p0f/p0f.fp
 
 # tcpdump is needed by scapy to replay pcaps
 RUN apk update && apk add --no-cache tcpdump
@@ -22,8 +23,7 @@ echo 'noenum = [ Resolve(), TCP_SERVICES, UDP_SERVICES ]' >> $HOME/.scapy_startu
 mkdir $HOME/.passer/
 VOLUME $HOME/.passer/
 
-COPY passer.py /passer.py
-COPY passer_lib.py /passer_lib.py
+COPY *.py /
 
 ENTRYPOINT ["python", "/passer.py"]
 
