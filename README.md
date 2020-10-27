@@ -58,61 +58,49 @@ To install scapy, see the [installation guide](https://scapy.readthedocs.io/en/l
 
 ### Docker
 
-You may also use passer within docker. Building is optional as you can also jump straight to the `docker run` command or the examples which will pull a pre-build docker image from a public repository. You can build the passer image like this:
+Passer also comes packaged as a Docker image. If you don't already have Docker here is a quick and dirty way to install it on Linux:
+
 ```bash
-docker build -t quay.io/activecm/passer .
+curl -fsSL https://get.docker.com | sh -
 ```
 
-And then you can run it like this:
+Otherwise, follow the [install instructions](https://docs.docker.com/get-docker/) for your operating system.
+
+For most uses, we recommend the [`passer`](https://github.com/activecm/passer/blob/master/passer) script included in this repo. This script will handle all docker-specific
+
 ```bash
-docker run --rm -i --init --name=passer --net=host quay.io/activecm/passer
+wget https://raw.githubusercontent.com/activecm/passer/master/passer
+chmod +x passer
 ```
 
-In order to kill passer you can run:
+You can then use this script just as you would in any of the examples below. For example:
+
+```bash
+./passer -i eth0
+# The equivalent without using the included script would be:
+docker run --rm --name=passer -i --init --net=host --cap-add=net_raw activecm/passer -i eth0
+```
+
+In order to stop passer run:
+
 ```bash
 docker stop passer
 ```
-or press `Ctrl-\` (control then backslash) in passer's window.
+
 
 ## Examples
 
-Both native and docker equivalent commands are given for each of the following examples. For the docker commands, please use the following bash function which is a wrapper around the docker command with the the additional ability to parse volume mount arguments:
-```bash
-# "c" for "containerized"
-function cpasser() {  
-  local docker_args=("--rm" "--interactive" "--init" "--name" "passer" "--net" "host")
-  local passer_args=()
-  while [[ $# -gt 0 ]]; do
-    case $1 in
-      -v|--volume)
-        # pop next two arguments off and append to docker args
-        docker_args+=("$1"); shift
-        docker_args+=("$1"); shift
-        ;;
-      -v=*|--volume=*)
-        # pop next argument off and append to docker args
-        docker_args+=("$1"); shift
-        ;;
-      *)
-        # pop next argument off and append to passer args
-        passer_args+=("$1"); shift
-        ;;
-    esac
-  done
-  docker run "${docker_args[@]}" quay.io/activecm/passer "${passer_args[@]}"
-}
-```
+### Sniff live as root
 
-1) Sniff live as root
 ```bash
 /path/to/passer.py
-# or with docker
-cpasser
 ```
+
 This sniffs from all network interfaces and sends all output
 lines to your console.
 
-2) Sniff live as a non-root user
+### Sniff live as a non-root user
+
 ```bash
 sudo /path/to/passer.py
 ```
@@ -121,66 +109,60 @@ or
 su - -c '/path/to/passer.py'
 ```
 
-3) Sniff live as root, but only from one interface
+### Sniff live as root, but only from one interface
+
 ```bash
 /path/to/passer.py -i IfaceName
-# or with docker
-cpasser -i IfaceName
 ```
 Running `route` should give some live interfaces you might use. 
-This is incompatible with "-r".
+> :grey_exclamation: `-i` is incompatible with `-r`.
 
-4) Read packets from a pcap file; no root privileges needed
+### Read packets from a pcap file; no root privileges needed
+
 ```bash
 /path/to/passer.py -r /path/to/packets.pcap
-# or with docker
-cpasser -v /path/to/packets.pcap:/packets.pcap -r /packets.pcap
 ```
-This is incompatible with "-i".
 
-5) Accept raw pcap data on stdin
+> :grey_exclamation: `-r` is incompatible with `-i`.
+
+### Accept raw pcap data on stdin
+
 ```bash
 cat packetdata.pcap | ./passer.py -r /proc/self/fd/0
 zcat packetdata.pcap.gz | ./passer.py -r /proc/self/fd/0
 bzcat packetdata.pcap.bz2 | ./passer.py -r /proc/self/fd/0
 tcpdump -i eth0 -qtnp -w - | ./passer.py -r /proc/self/fd/0
-# or with docker
-cat packetdata.pcap | cpasser -r /proc/self/fd/0
 # etc...
 ```
+
 This lets you capture packets with any tool that can save
 packets to a pcap file, and later process them with passer on a
 different system.
 
-6) Save output lines to a text file for later processing
+### Save output lines to a text file for later processing
+
 ```bash
 /path/to/passer.py -l /path/to/networkinfo.txt
-# or with docker
-touch /path/to/networkinfo.txt
-cpasser -v /path/to/networkinfo.txt.pcap:/networkinfo.txt -l /networkinfo.txt
 ```
 
-7) Suppress warnings and other debugging info
+### Suppress warnings and other debugging info
+
 ```bash
 /path/to/passer.py 2>/dev/null
-# or with docker
-cpasser 2>/dev/null
 ```
 
-8) Show help screen
+### Show help screen
+
 ```bash
 /path/to/passer.py -h
-# or with docker
-cpasser -h
 ```
 
-9) Save "odd"/unhandled packets to a pcap file
+### Save "odd"/unhandled packets to a pcap file
+
 ```bash
 /path/to/passer.py -u /path/to/oddpackets.pcap
-# or with docker
-touch /path/to/oddpackets.pcap
-cpasser -v /path/to/oddpackets.pcap:/oddpackets.pcap -u /oddpackets.pcap
 ```
+
 This is generally intended for the development process; packets
 saved to this file are ones that need to have signatures written.  If
 you'd like to help improve the program, get in touch with the author,
@@ -188,7 +170,8 @@ Bill Stearns (william.l.stearns@gmail.com).  Contributions of odd packets,
 descriptions of services, and patches to the program are gratefully
 accepted.
 
-10) Apply a BPF filter to limit which packets are processed
+### Apply a BPF filter to limit which packets are processed
+
 This _should_ be as simple as placing the BPF filter in single
 quotes at the end of the command line.  As of version 1.16, the
 underlying library does not appear to successfully use the supplied
@@ -197,8 +180,6 @@ hand the pared-down set of packets to passer on stdin, like above:
 
 ```bash
 tcpdump -r packets.pcap -w - 'icmp or arp' | ./passer.py -r /proc/self/fd/0
-# or with docker
-tcpdump -r packets.pcap -w - 'icmp or arp' | cpasser -r /proc/self/fd/0
 ```
 
 See the "Sample filters" section, below, for some suggestions of

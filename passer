@@ -1,0 +1,71 @@
+#!/bin/bash
+
+# If the current user doesn't have docker permissions run with sudo
+SUDO=''
+if [ ! -w "/var/run/docker.sock" ]; then
+	SUDO="sudo --preserve-env "
+fi
+
+function cpasser() {
+	local passer_args=()
+	local docker_cmd=("docker" "run")
+	docker_cmd+=("--name" "passer")     # allow easy controlling of the container
+	docker_cmd+=("--rm")                # remove the container after passer exits
+	docker_cmd+=("--interactive")       # allow sending keystrokes to passer (e.g. to shut down) and piping in a pcap
+	docker_cmd+=("--init")              # needs tini init to properly shut down passer
+	docker_cmd+=("--net" "host")        # allow capturing on host network interfaces
+	docker_cmd+=("--cap-add" "net_raw") # allow listening in promiscuous mode
+
+	# For the most part, we can just pass all arguments directly through.
+	# However, certain commands need to mount files or directories
+	# into the docker container. This adds the volume mounts.
+	while [ $# -gt 0 ]; do
+		case $1 in
+			# The following arguments read from a file.
+			-r|--read)
+				passer_args+=("$1")
+				if [ -f "$2" ]; then
+					# Get the absolute path.
+					local abs_path=$(realpath "$2")
+					# Map to the same path inside the container for nicer status/error messages.
+					docker_cmd+=("--volume" "$abs_path:$abs_path")
+					# Change the argument to the absolute path.
+					passer_args+=("$abs_path")
+				else
+					# The file doesn't exist for some reason. Let passer display the error message.
+					passer_args+=("$2")
+				fi
+				shift
+				shift
+			;;
+			# The following arguments write to a file.
+			-l|--log)        ;& # fallthrough
+			-s|--suspicious) ;& # fallthrough
+			-u|--unhandled)
+				passer_args+=("$1")
+				# These files may or may not exist already. Mount in the parent directory instead.
+				local abs_path=$(realpath "$2")
+				local parent_path=$(dirname "$abs_path")
+				docker_cmd+=("--volume" "$parent_path:$parent_path")
+				# Change the argument to the absolute path.
+				passer_args+=("$abs_path")
+				shift
+				shift
+			;;
+			# All other arguments are passed through.
+			*)
+				passer_args+=("$1")
+				shift
+			;;
+		esac
+	done
+
+	docker_cmd+=("activecm/passer")
+
+	# Print out the final arguments and exit for debugging
+	#echo "docker_cmd: ${docker_cmd[@]}"; echo "passer_args: ${passer_args[@]}"; exit  # debug
+
+	$SUDO "${docker_cmd[@]}" "${passer_args[@]}"
+}
+
+cpasser "$@"
