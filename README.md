@@ -18,9 +18,10 @@ glad to update the script.
 ## Installation
 
 ### Requirements
-- Python >=2.4 and <3.0
+- Python >=2.4
 - Python libraries (see [requirements.txt](/requirements.txt))
   - ipaddress
+  - maxminddb-geolite2
   - pytz
   - scapy>=2.4.0
 
@@ -81,12 +82,7 @@ You can then use this script just as you would in any of the examples below. For
 docker run --rm --name=passer -i --init --net=host --cap-add=net_raw activecm/passer -i eth0
 ```
 
-In order to stop passer run:
-
-```bash
-docker stop passer
-```
-
+In order to stop passer, press `Ctrl-C`.
 
 ## Examples
 

@@ -12,6 +12,7 @@ function cpasser() {
 	docker_cmd+=("--name" "passer")     # allow easy controlling of the container
 	docker_cmd+=("--rm")                # remove the container after passer exits
 	docker_cmd+=("--interactive")       # allow sending keystrokes to passer (e.g. to shut down) and piping in a pcap
+	docker_cmd+=("--tty")               # allow passer to write to the screen as it runs
 	docker_cmd+=("--init")              # needs tini init to properly shut down passer
 	docker_cmd+=("--net" "host")        # allow capturing on host network interfaces
 	docker_cmd+=("--cap-add" "net_raw") # allow listening in promiscuous mode
@@ -60,7 +61,7 @@ function cpasser() {
 		esac
 	done
 
-	docker_cmd+=("activecm/passer")
+	docker_cmd+=("activecm/passer:ng")
 
 	# Print out the final arguments and exit for debugging
 	#echo "docker_cmd: ${docker_cmd[@]}"; echo "passer_args: ${passer_args[@]}"; exit  # debug
