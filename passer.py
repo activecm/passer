@@ -531,7 +531,7 @@ special_layers = set(['802.1Q', '802.3', 'ARP', 'EAPOL', 'Ethernet', 'LLC', 'Pad
 
 meta = {}		#Empty dictionary - not used in this version of passer, but will be used in the next.  Fills the open space in the ShowPacket function call.
 
-passerVersion = "2.89"
+passerVersion = "2.90"
 
 
 #======== Functions ========
@@ -1180,7 +1180,7 @@ def process_udp_ports(meta, p, prefs, dests):
 		ReportId("US", dIP, "UDP_" + dport, "open", "syslog/server not confirmed", (['plaintext', ]), prefs, dests)
 		process_udp_ports.UDPManualServerDescription[FromPort] = "syslog/server not confirmed"
 
-		hostname_and_process = SyslogMatch.search(Payload)
+		hostname_and_process = SyslogMatch.search(force_string(Payload))
 		if (hostname_and_process is not None) and (len(hostname_and_process.groups()) >= 2):
 			syslog_hostname = hostname_and_process.group(1)
 			ReportId("NA", sIP, "PTR", syslog_hostname, "syslog", (['plaintext', ]), prefs, dests)
@@ -1230,7 +1230,7 @@ def process_udp_ports(meta, p, prefs, dests):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "udp1124/broadcast", ([]), prefs, dests)
 ### IP/UDP/search-agent=1234 used by stora NAS
 	elif (dport == "1234") and (meta['dMAC'] == "ff:ff:ff:ff:ff:ff") and Payload and (Payload.find(b'Hello there. I am at ') > -1):
-		HostnameMatch = StoraHostnameMatch.search(Payload)
+		HostnameMatch = StoraHostnameMatch.search(force_string(Payload))
 		if (HostnameMatch is not None) and (len(HostnameMatch.groups()) >= 1):
 			ReportId("UC", sIP, "UDP_" + dport, "open", "stora_nas_scan/broadcast hostname: " + HostnameMatch.group(1), ([]), prefs, dests)
 		else:
@@ -1272,10 +1272,10 @@ def process_udp_ports(meta, p, prefs, dests):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "ssdp-discovery/client", ([]), prefs, dests)
 	elif (dport == "1900") and dIP in ("255.255.255.255", "239.255.255.250", "ff02:0000:0000:0000:0000:0000:0000:000c", "ff05:0000:0000:0000:0000:0000:0000:000c", "ff08:0000:0000:0000:0000:0000:0000:000c", "ff0e:0000:0000:0000:0000:0000:0000:000c") and Payload and (Payload.startswith(b'NOTIFY')):		#ssdp announcement
 		additional_info = ''
-		LocationMatch = SSDPLocationMatch.search(Payload)
+		LocationMatch = SSDPLocationMatch.search(force_string(Payload))
 		if (LocationMatch is not None) and (len(LocationMatch.groups()) >= 1):
 			additional_info = additional_info + ' SSDP Location: ' + str(LocationMatch.group(1)).strip()
-		ServerMatch = SSDPServerMatch.search(Payload)
+		ServerMatch = SSDPServerMatch.search(force_string(Payload))
 		if (ServerMatch is not None) and (len(ServerMatch.groups()) >= 1):
 			additional_info = additional_info + ' SSDP Server: ' + str(ServerMatch.group(1)).replace(',', ' ').strip()
 		ReportId("UC", sIP, "UDP_" + dport, "open", "ssdp-announce/client" + additional_info, ([]), prefs, dests)
@@ -1349,7 +1349,7 @@ def process_udp_ports(meta, p, prefs, dests):
 ### IP/UDP/vonage
 	elif (sport == "5061") and (dport == "5061") and (dIP in vonage_sip_servers):		#Vonage SIP client
 		if Payload and (Payload.find(b'.vonage.net:5061 SIP/2.0') > -1):
-			SipMatch = process_udp_ports.SipPhoneMatch.search(Payload)
+			SipMatch = process_udp_ports.SipPhoneMatch.search(force_string(Payload))
 			if (SipMatch is not None) and (len(SipMatch.groups()) >= 1):
 				ReportId("UC", sIP, "UDP_" + dport, "open", "sip/vonage_client, phone number: " + SipMatch.group(1), ([]), prefs, dests)
 			else:
@@ -1593,7 +1593,7 @@ def process_udp_ports(meta, p, prefs, dests):
 		ReportId("UC", sIP, "UDP_" + dport, "open", "logitech-arx/" + meta['cast_type'] + "client", ([]), prefs, dests)	#'portonlysignature'
 ### IP/UDP/brother-announce=54925 and 54926 used by brother printers		http://ww2.chemistry.gatech.edu/software/Drivers/Brother/MFC-9840CDW/document/ug/usa/html/sug/index.html?page=chapter7.html
 	elif (dport in ("54925", "54926")) and meta['cast_type'] and Payload and (Payload.find(b'NODENAME=') > -1):
-		BrotherMatch = BrotherAnnounceMatch.search(Payload)
+		BrotherMatch = BrotherAnnounceMatch.search(force_string(Payload))
 		if (BrotherMatch is not None) and (len(BrotherMatch.groups()) >= 4):
 			#In the packets I've seen, groups 1, 2, and 3 are ip addresses (1 ipv4 and 2 ipv6).  Group 4 is a nodename ("BRWF" + uppercase mac address, no colons)
 			ReportId("UC", sIP, "UDP_" + dport, "open", "brother-announce/" + meta['cast_type'] + " nodename: " + BrotherMatch.group(4), ([]), prefs, dests)
