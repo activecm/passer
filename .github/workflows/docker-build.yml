@@ -42,7 +42,7 @@ jobs:
       with:
         platforms: linux/amd64,linux/arm64,linux/arm/v7
         tags: |
-          activecm/passer:latest
-        push: false
+          activecm/passer:test
+        push: true
         cache-from: type=local,src=/tmp/.buildx-cache
         cache-to: type=local,mode=max,dest=/tmp/.buildx-cache
