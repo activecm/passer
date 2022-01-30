@@ -19,6 +19,11 @@ import socket				#For dns lookups
 import codecs				#For python2 utf-8 writing
 #from scapy.all import sniff, Scapy_Exception, PcapWriter
 from scapy.all import *			#Please make sure you have an up-to-date version of scapy, at least 2.4.0
+# Imports for passive_fingerprinting feature.
+from passive_fingerprinting.passive_data import passive_data
+from passive_fingerprinting.passive_data import pull_data
+from passive_fingerprinting.passive_data import tcp_sig
+
 
 sys.path.insert(0, '.')			#Allows us to load from the current directory (There was one claim that we need to create an empty file __init__.py , but this does not appear to be required.)
 
@@ -1003,6 +1008,7 @@ if __name__ == '__main__':
 	#parser.add_argument('--debuglayers', required=False, default=False, action='store_true', help=argparse.SUPPRESS)						#Debug scapy layers, hidden option
 	parser.add_argument('-a', '--active', help='Perform active scanning to look up additional info', required=False, default=False, action='store_true')
 	parser.add_argument('--forced_interface', help='Interface to which to write active scan packets (not needed on Linux)', required=False, default=None)
+	parser.add_argument('-p', '--passive-fingerprinting', help='Enable Passive Fingerprinting Capabilities.', required=False, default=False, action='store_true')
 	(parsed, unparsed) = parser.parse_known_args()
 	cl_args = vars(parsed)
 
@@ -1035,6 +1041,23 @@ if __name__ == '__main__':
 	mkdir_p(cache_dir + '/ipv6/')
 	mkdir_p(cache_dir + '/dom/')
 
+	# If Passive Finger Printing Capability is enabled.
+	if cl_args['passive_fingerprinting']:
+		passive_data.setup_db()
+		conn = passive_data.create_con()
+		if passive_data.test_github_con():
+			tcp_sig_data = pull_data.import_data()
+
+   			# Iterate over JSON Objects
+			for i in tcp_sig_data['signature_list']:
+				try:
+					signature = tcp_sig(i)
+					author_id = passive_data.author_insert(conn, signature.author, signature.author_email, signature.author_github)
+					os_id = passive_data.os_insert(conn, signature.os_name, signature.os_version, signature.os_class, signature.os_vendor, signature.os_url)
+					device_id = passive_data.device_insert(conn, signature.device_type, signature.device_vendor, signature.device_url)
+					passive_data.signature_insert(conn, signature.sig_acid, signature.sig_tcp_flag, signature.signature['ver'], signature.signature['ittl'], signature.signature['olen'], signature.signature['mss'], signature.signature['wsize'], signature.signature['scale'], signature.signature['olayout'], signature.signature['quirks'], signature.signature['pclass'], signature.sig_comments, os_id, device_id, author_id)
+				except Exception as e:
+					print(e)
 
 
 	mgr = Manager()				#This section sets up a shared data dictionary; all items in it must be Manager()-based shared data structures
