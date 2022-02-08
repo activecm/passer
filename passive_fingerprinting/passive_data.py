@@ -189,5 +189,3 @@ class tcp_sig:
         self.author_email = tcp_sig_obj['author']['email']
         self.author_github = tcp_sig_obj['author']['github']
         self.signature = dict(zip(['ver', 'ittl', 'olen', 'mss', 'wsize', 'scale', 'olayout', 'quirks', 'pclass'], self.sig_tcp_sig.split(':')))
-
-
