@@ -20,9 +20,9 @@ import codecs				#For python2 utf-8 writing
 #from scapy.all import sniff, Scapy_Exception, PcapWriter
 from scapy.all import *			#Please make sure you have an up-to-date version of scapy, at least 2.4.0
 # Imports for passive_fingerprinting feature.
-from passive_fingerprinting.passive_data import passive_data
-from passive_fingerprinting.passive_data import pull_data
-from passive_fingerprinting.passive_data import tcp_sig
+from smudge.passive_data import passive_data
+from smudge.passive_data import pull_data
+from smudge.passive_data import tcp_sig
 
 
 sys.path.insert(0, '.')			#Allows us to load from the current directory (There was one claim that we need to create an empty file __init__.py , but this does not appear to be required.)

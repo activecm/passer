@@ -18,11 +18,17 @@ import os
 import sys
 from scapy.all import sniff, Raw, Scapy_Exception, IP, IPv6, TCP				# pylint: disable=no-name-in-module
 
+def test_mss(MSS):
+	'''Look for MSS in TCP Option.'''
+	d = dict(MSS)
+	try:
+		return d['MSS']
+	except:
+		return '*'
 
 
 def debug_out(output_string):
 	"""Send debuging output to stderr."""
-
 	if cl_args['devel']:
 		sys.stderr.write(output_string + '\n')
 		sys.stderr.flush()
@@ -35,6 +41,13 @@ def processpacket(p):
 	if ((p.haslayer(IP) and p[IP].proto == 6) or (p.haslayer(IPv6) and p[IPv6].nh == 6)) and p.haslayer(TCP) and isinstance(p[TCP], TCP):		# pylint: disable=too-many-boolean-expressions
 		if (p[TCP].flags & 0x17) == 0x02:		#SYN (ACK, RST, and FIN off)
 			tcp_attributes = {}
+			tcp_attributes['ver'] = p[IP].version
+			tcp_attributes['ittl'] = p[IP].ttl
+			tcp_attributes['olen'] = len(p[IP].options)
+			tcp_attributes['mss'] = test_mss(p[TCP].options)
+			tcp_attributes['window'] = p[TCP].window
+			tcp_attributes['frag'] = p[IP].frag
+			tcp_attributes['len'] = p[IP].len
 			tcp_attributes['sport'] = p[TCP].sport
 			tcp_attributes['dport'] = p[TCP].dport
 			tcp_attributes['seq'] = p[TCP].seq
@@ -42,7 +55,6 @@ def processpacket(p):
 			tcp_attributes['dataofs'] = p[TCP].dataofs
 			tcp_attributes['reserved'] = p[TCP].reserved
 			tcp_attributes['flags'] = p[TCP].flags
-			tcp_attributes['window'] = p[TCP].window
 			tcp_attributes['chksum'] = p[TCP].chksum
 			tcp_attributes['urgptr'] = p[TCP].urgptr
 			tcp_attributes['options'] = p[TCP].options
