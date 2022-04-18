@@ -23,6 +23,9 @@ from scapy.all import *			#Please make sure you have an up-to-date version of sc
 from smudge.passive_data import passive_data
 from smudge.passive_data import pull_data
 from smudge.passive_data import tcp_sig
+from smudge.signature_matching import signature
+from smudge.signature_matching import matching
+from smudge.signature_matching import query_object
 
 
 sys.path.insert(0, '.')			#Allows us to load from the current directory (There was one claim that we need to create an empty file __init__.py , but this does not appear to be required.)
@@ -735,6 +738,23 @@ def IP_handler(task_q, sh_da, prefs, dests):
 	while True:
 		try:
 			(p, meta) = task_q.get(block=True, timeout=None)
+            #### Smudge has entered the chat.
+			if cl_args['passive_fingerprinting'] != False and p.haslayer("TCP"):
+				if 'S' in str(p['TCP'].flags):
+					try:
+						packet_signature = signature(p)
+						if cl_args['devel'] != False:
+							dev_out = "\n\nSignature Identified for: {IP} --> {signature}".format(IP=p['IP'].src, signature=str(packet_signature))
+							print("\033[91m{}\033[00m".format(dev_out))
+						mo = matching.match(packet_signature)
+						a = mo[1][0]
+						b = query_object(acid=a[1], platform=a[2], tcp_flag=a[3], comments=a[13], version=a[4], ittl=a[5], olen=a[6], mss=a[7], wsize=a[8], scale=a[9], olayout=a[10], quirks=a[11], pclass=a[12])
+						m_out = "Match at: {percent} to signature {signature}".format(percent=mo[0], signature=b)
+						print("\033[96m{}\033[00m" .format(m_out))
+						print("Signature identified as {platform}".format(platform=b.platform))
+						print("Comments: {comments}\n\n".format(comments=b.sig_comments))
+					except:
+						pass
 		except KeyboardInterrupt:
 			break
 		else:
@@ -1029,6 +1049,23 @@ if __name__ == '__main__':
 			sys.stderr.write('Too many arguments that do not match a parameter.  Any chance you did not put the bpf expression in quotes?  Exiting.\n')
 			quit()
 
+	# If Passive Finger Printing Capability is enabled.
+	if cl_args['passive_fingerprinting']:
+		print("\033[95m {}\033[00m".format("Smudge Enabled"))
+	# Create Sqlite DB for Smudge Signatures
+		passive_data.setup_db()
+	# Create DB  Connection
+		conn = passive_data.create_con()
+		if passive_data.test_github_con():
+			tcp_sig_data = pull_data.import_data()
+    # Iterate over JSON Objects
+			for i in tcp_sig_data['signature_list']:
+				try:
+					smud = tcp_sig(i)
+					passive_data.signature_insert(conn, smud)
+				except Exception as e:
+					print(e)
+
 	#Not currently offered as actual user-supplied parameters, but could easily be done so
 	cl_args['per_packet_timeout'] = 1		#_Could_ shorten this to speed up traceroutes, but if too low we may miss responses.  Better to have more parallel traceroutes, below.
 	cl_args['hop_limit'] = 30
@@ -1040,25 +1077,6 @@ if __name__ == '__main__':
 	mkdir_p(cache_dir + '/ipv4/')
 	mkdir_p(cache_dir + '/ipv6/')
 	mkdir_p(cache_dir + '/dom/')
-
-	# If Passive Finger Printing Capability is enabled.
-	if cl_args['passive_fingerprinting']:
-		passive_data.setup_db()
-		conn = passive_data.create_con()
-		if passive_data.test_github_con():
-			tcp_sig_data = pull_data.import_data()
-
-   			# Iterate over JSON Objects
-			for i in tcp_sig_data['signature_list']:
-				try:
-					signature = tcp_sig(i)
-					author_id = passive_data.author_insert(conn, signature.author, signature.author_email, signature.author_github)
-					os_id = passive_data.os_insert(conn, signature.os_name, signature.os_version, signature.os_class, signature.os_vendor, signature.os_url)
-					device_id = passive_data.device_insert(conn, signature.device_type, signature.device_vendor, signature.device_url)
-					passive_data.signature_insert(conn, signature.sig_acid, signature.sig_tcp_flag, signature.signature['ver'], signature.signature['ittl'], signature.signature['olen'], signature.signature['mss'], signature.signature['wsize'], signature.signature['scale'], signature.signature['olayout'], signature.signature['quirks'], signature.signature['pclass'], signature.sig_comments, os_id, device_id, author_id)
-				except Exception as e:
-					print(e)
-
 
 	mgr = Manager()				#This section sets up a shared data dictionary; all items in it must be Manager()-based shared data structures
 	shared_data = {}
@@ -1204,3 +1222,5 @@ if __name__ == '__main__':
 		destinations['suspicious'].put(None)
 
 	sys.stderr.write('\nDone.\n')
+
+

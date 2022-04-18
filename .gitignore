@@ -108,3 +108,9 @@ venv.bak/
 
 # VScode Launch.json files
 .vscode/
+
+# Packet Capture Files
+*.pcap
+
+# Python Non Integrated Test
+trial.py

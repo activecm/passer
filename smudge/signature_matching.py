@@ -10,6 +10,7 @@ class quirk:
     """
 
     def __init__(self, p):
+        '''Takes a packet as an argument.'''
         self.p = p
 
     def __str__(self):
@@ -19,25 +20,37 @@ class quirk:
     def df(self):
         '''Sets df attribute based on flag - "don't fragment" set (probably PMTUD); ignored for IPv6.'''
         df = False
-        if 'DF' in self.p['IP'].flags:
-            df = 'df'
-        return df
+        version = self.p.version
+        if version == 6:
+            return False
+        else:
+            if 'DF' in self.p['IP'].flags.names:
+                df = 'df'
+            return df
 
     @property
     def id_plus(self):
         '''Sets id+ attribute based on flag and IPID - DF set but IPID non-zero; ignored for IPv6.'''
-        id_plus = False
-        if self.p['IP'].flags =='DF' and self.p['IP'].id != 0:
-            id_plus = 'id+'
-        return id_plus
+        version = self.p.version
+        if version == 6:
+            return False
+        else:
+            id_plus = False
+            if self.p['IP'].flags =='DF' and self.p['IP'].id != 0:
+                id_plus = 'id+'
+            return id_plus
 
     @property
     def id_minus(self):
         '''Sets id- attribute based on flag and IPID - DF not set but IPID is zero; ignored for IPv6.'''
-        id_minus = False
-        if self.p['IP'].flags =='DF' and self.p['IP'].id == 0:
-            id_minus = 'id-'
-        return id_minus
+        version = self.p.version
+        if version == 6:
+            return False
+        else:
+            id_minus = False
+            if self.p['IP'].flags =='DF' and self.p['IP'].id == 0:
+                id_minus = 'id-'
+            return id_minus
 
     @property
     def ecn(self):
@@ -50,10 +63,14 @@ class quirk:
     @property
     def zero_plus(self):
         '''Sets 0+ Attribute -  "must be zero" field not zero; ignored for IPv6.'''
-        zero_plus = False
-        if self.p.reserved != 0:
-            zero_plus = '0+'
-        return False
+        version = self.p.version
+        if version == 6:
+            return False
+        else:
+            zero_plus = False
+            if self.p.reserved != 0:
+                zero_plus = '0+'
+            return zero_plus
 
     @property
     def flow(self):
@@ -111,14 +128,27 @@ class quirk:
     def ts1_minus(self):
         '''Sets ts1- attribute - own timestamp specified as zero.'''
         ts1_minus = False
+        try:
+            ts1 = dict(self.p['TCP'].options)
+            if ts1['Timestamp'][0] == 0:
+                ts1_minus = 'T0'
+        except:
+            pass
         return ts1_minus
 
     @property
     def ts2_plus(self):
         '''Sets ts2+ attribute - non-zero peer timestamp on initial SYN.'''
         ts2_plus = False
+        try:
+            ts2 = dict(self.p['TCP'].options)
+            if ts2['Timestamp'][1] != 0:
+                ts2_plus = 'T'
+        except:
+            pass
         return ts2_plus
 
+    #TODO
     @property
     def opt_plus(self):
         '''Sets opt+ attribute - trailing non-zero data in options segment.'''
@@ -128,14 +158,25 @@ class quirk:
     @property
     def exws(self):
         '''Sets exws attribute - excessive window scaling factor (> 14).'''
-        exws = False
-        return exws
+        try:
+            exws = dict(self.p['TCP'].options)
+        except:
+            exws = False
+        if exws != False:
+            try:
+                exws = exws['WScale'] >= 14
+                return exws
+            except:
+                pass
+        else:
+            return False
 
+    #TODO
     @property
     def bad(self):
         '''Sets bad attribute - malformed TCP options.'''
-        bad = False
-        return bad
+        bad = isinstance(self.p['TCP'].options, list)
+        return False
 
     @property
     def qstring(self):
@@ -183,7 +224,18 @@ class signature:
         elif option[0] == 'EOL':
             return 'E'
         else:
-            return '?' + str(option[1])
+            #TODO
+            # The p0f docs state:
+            #  ?n     - unknown option ID n
+            # What does that even mean?
+            # Then to make things even more vague
+            # some random documentation on cert.org states:
+            #  ?n       - unrecognized option number n.
+            # Soooooo, unrecognized != unknown
+            # I came up with the following and the output does not look correct. \
+            # We went with literally returning '?n'
+            # return '?' + str(option[1])
+            return '?n'
 
     @property
     def version(self):
@@ -209,7 +261,12 @@ class signature:
         cases, determine maximum initial TTL and then add a - suffix to
         the value to avoid confusion.
         '''
-        ittl = self.p['IP'].ttl
+        if self.version == '4':
+            ittl = self.p['IP'].ttl
+        elif self.version == '6':
+            ittl = self.p['IPv6'].ttl
+        else:
+            ittl = ''
         return ittl
 
     @property
@@ -219,11 +276,28 @@ class signature:
         for normal IPv4 traffic; always zero for IPv6 due to the
         limitations of libpcap.
         '''
-        olen = len(self.p['IP'].options)
+        if self.version == '4':
+            olen = len(self.p['IP'].options)
+        elif self.version == '6':
+            olen = len(self.p['IPv6'].options)
+        else:
+            olen = ''
         return str(olen)
 
     @property
     def mss(self):
+        '''
+        maximum segment size, if specified in TCP options. Special value
+        of '*' can be used to denote that MSS varies depending on the
+        parameters of sender's network link, and should not be a part of
+        the signature. In this case, MSS will be used to guess the
+        type of network hookup according to the [mtu] rules.
+
+        NEW SIGNATURES: Use '*' for any commodity OSes where MSS is
+        around 1300 - 1500, unless you know for sure that it's fixed.
+        If the value is outside that range, you can probably copy it
+        literally.
+        '''
         mss = dict(self.p['TCP'].options)
         try:
             return str(mss['MSS'])
@@ -240,8 +314,9 @@ class signature:
         to be used. Wilcard ('*') is possible too.
         '''
         window_size = self.p['TCP'].window
-        if (self.p['TCP'].window / int(self.mss)).is_integer():
-            window_size = "mss*" + str(int(self.p['TCP'].window / int(self.mss)))
+        if self.mss != '*':
+            if (self.p['TCP'].window / int(self.mss)).is_integer():
+                window_size = "mss*" + str(int(self.p['TCP'].window / int(self.mss)))
         return str(window_size)
 
     @property
@@ -261,6 +336,11 @@ class signature:
 
     @property
     def olayout(self):
+        '''
+        comma-delimited layout and ordering of TCP options, if any. This
+        is one of the most valuable TCP fingerprinting signals. Supported
+        values.
+        '''
         if len(self.p['TCP'].options) == 0:
             return '*'
         else:
@@ -271,6 +351,10 @@ class signature:
 
     @property
     def quirk(self):
+        '''
+        Comma-delimited properties and quirks observed in IP or TCP
+        headers.
+        '''
         q = quirk(self.p)
         return str(q)
 
@@ -438,3 +522,19 @@ class query_object():
 
     def __str__(self):
         return self.qstring
+
+
+
+
+
+
+
+'''
+try:
+            ts2 = dict(self.p['TCP'].options)
+            if ts2['Timestamp'][1] != 0:
+                ts2_plus = 'T'
+        except:
+            pass
+
+'''
