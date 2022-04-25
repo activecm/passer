@@ -4,6 +4,16 @@ In the case of an error such as an unresolvable target hostname, a list of (30, 
 #Program works fine under python2 and python3.
 #Many thanks to https://jvns.ca/blog/2013/10/31/day-20-scapy-and-traceroute/ for the initial idea.
 
+__version__ = '0.3.2'
+
+__author__ = 'William Stearns'
+__copyright__ = 'Copyright 2018-2022, William Stearns'
+__credits__ = ['William Stearns']
+__email__ = 'william.l.stearns@gmail.com'
+__license__ = 'GPL 3.0'
+__maintainer__ = 'William Stearns'
+__status__ = 'Production'				#Prototype, Development or Production
+
 
 import os
 import sys
@@ -14,6 +24,9 @@ import ipaddress
 import errno
 #from scapy.all import *
 from scapy.all import ICMP, ICMPv6TimeExceeded, IP, IPv6, Raw, Scapy_Exception, UDP, sr1	# pylint: disable=no-name-in-module
+sys.path.insert(0, os.getcwd())
+from db_lib import add_to_db_list				# pylint: disable=wrong-import-position
+								#Sqlite3 database library
 
 
 def ip_addr_obj(raw_addr):
@@ -207,11 +220,12 @@ def traceroute_hop_list(compressed_target, required_interface, max_packet_wait, 
 		mkdir_p(tr_cache_dir)
 
 		if os.path.exists(cache_file(tr_cache_dir, target)):
-			try:
-				hop_list = load_json_from_file(cache_file(tr_cache_dir, target))
-				loaded_cached_list = True
-			except:
-				raise
+			#try:
+			hop_list = load_json_from_file(cache_file(tr_cache_dir, target))
+			loaded_cached_list = True
+			#Umm, "try...except raise" doesn't actually change the default behaviour.
+			#except:
+			#	raise
 
 	if not loaded_cached_list:
 		flowlabel_value = random.randrange(1, 2**20)
@@ -292,23 +306,30 @@ def traceroute_hop_list(compressed_target, required_interface, max_packet_wait, 
 						write_object(cache_file(tr_cache_dir, router_ip), json.dumps(truncated_path_to_ip))
 					except:
 						pass
+				add_to_db_list(ip_traceroutes, router_ip, json.dumps(truncated_path_to_ip))
 
 			del truncated_path_to_ip[-1]
+	add_to_db_list(ip_traceroutes, target, json.dumps(hop_list))
+
 
 	return hop_list
 
 
 
-scapy_traceroute_version = '0.2.5'
 per_packet_timeout_default = 1
 forced_interface_default = None
 ttl_default = 30
 traceroute_cache_dir_default = os.environ["HOME"] + '/.cache/scapy_traceroute/'
+ip_cache_dir_default = os.environ["HOME"] + '/.cache/ip/'
+
+ip_cache_dir = ip_cache_dir_default
+mkdir_p(ip_cache_dir)
+ip_traceroutes = ip_cache_dir + 'ip_traceroutes.sqlite3'
 
 if __name__ == '__main__':
 	import argparse
 
-	parser = argparse.ArgumentParser(description='scapy_traceroute version ' + str(scapy_traceroute_version))
+	parser = argparse.ArgumentParser(description='scapy_traceroute version ' + str(__version__))
 	parser.add_argument('-p', '--per_packet_timeout', help='Time to wait for a reply for a single packet, can be fractional (default: ' + str(per_packet_timeout_default) + ' ).', required=False, default=per_packet_timeout_default)
 	parser.add_argument('-f', '--forced_interface', help='Force packets through this interface (needed on macos, default: ' + str(forced_interface_default) + ' ).', required=False, default=forced_interface_default)
 	parser.add_argument('-t', '--ttl', help='Maximum number of hops to try (default: ' + str(ttl_default) + ')', required=False, default=ttl_default)
