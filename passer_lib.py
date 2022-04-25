@@ -146,7 +146,7 @@ include_udp_errors_in_closed_ports = False	#If True, we look at unreachables and
 
 
 #======== Variables ========
-passer_lib_version = '0.25'
+passer_lib_version = '0.27'
 
 #Indexes into the tuple used in passing data to the output handler.  _e is for "enumerated"
 Type_e = 0
@@ -184,11 +184,11 @@ def force_string(raw_string):
 			retval = ' '.join([force_string(listitem) for listitem in raw_string])
 			#print(str(type(raw_string)))
 			#print("huh:" + str(raw_string))
-			#quit()
+			#sys.exit()
 		else:
 			print(str(type(raw_string)))
 			print("huh:" + str(raw_string))
-			quit()
+			sys.exit()
 			retval = str(raw_string)
 	else:
 		retval = str(raw_string)
@@ -310,7 +310,7 @@ def ShowPacket(orig_packet, meta_dict, banner_string, quit_override_preference, 
 		debug_out(str(orig_packet.answers), prefs, dests)
 		debug_out("Packet type: " + str(type(orig_packet)), prefs, dests)
 		if quit_override_preference and prefs['quit']:		#quit_override_preference is either KeepGoing == false or HonorQuit == True
-			quit()
+			sys.exit()
 
 
 def explode_ip(raw_addr, prefs, dests):
@@ -450,7 +450,7 @@ def generate_meta_from_packet(gmfp_pkt, prefs, dests):
 		meta_dict['dIP'] = explode_ip(gmfp_pkt['IPv6'].dst, prefs, dests)
 	#else:
 	#	gmfp_pkt.show()
-	#	quit()
+	#	sys.exit()
 
 	if gmfp_pkt.haslayer('TCP'):
 		meta_dict['sport'] = str(gmfp_pkt['TCP'].sport)
@@ -604,7 +604,7 @@ def NmapServiceFPDict(ServiceFileNames, prefs, dests):
 						#	debug_out("Unrecognized nmap-service-probes flag combination", prefs, dests)
 						#	debug_out(str(MatchEnd + 1) + " " + str(len(Remainder)), prefs, dests)
 						#	debug_out(Remainder + ", unknown flags", prefs, dests)
-						#	#quit()
+						#	#sys.exit()
 
 						#Substitute ; for , in ProtoString and ServerDescription since we're using commas as field delimiters in output
 						ServerDescription = Remainder[PPointer:].replace(',', ';')	#                    p/Caucho Resin JSP Engine srun/
@@ -786,6 +786,27 @@ def ARP_extract(p, meta, prefs, dests):
 	return state_set
 
 
+def ICMP_extract(p, meta, prefs, dests):
+	"""Pull all statements from the ICMP layer and return as a set of tuples."""
+
+	state_set = set([])
+
+	Type = p[ICMP].type
+	Code = p[ICMP].code
+
+	if Type in (3, 11, ):		#3=Unreachable, 11=Time exceeded.  All have embedded packets that may need attention
+		pass
+	#elif Type in ():
+	#else:
+	#	p.show()
+	#	sys.exit(86)
+
+	#if p[template].op == 2:
+	#	state_set.add(("MA", meta['sIP'], "Ethernet", p[template].hwsrc.upper(), "", ()))
+
+	return state_set
+
+
 def IP_extract(p, meta, prefs, dests):
 	"""Pull all statements from the IP layer and return as a set of tuples."""
 
@@ -962,7 +983,7 @@ def TCP_extract(p, meta, prefs, dests):
 							#TypeError: expected a character buffer object
 							if OneTuple[1] is None:
 								debug_out("Null description for " + OneTuple[0], prefs, dests)
-								#quit()
+								#sys.exit()
 							OutputDescription = OneTuple[1]
 							if len(MatchObj.groups()) >= 1:
 								#We have subexpressions matched, these need to be inserted into the description string
@@ -1231,7 +1252,7 @@ def UDP_extract(p, meta, prefs, dests):
 			state_set.add(("UC", sIP, "UDP_" + dport, "open", base_description + additional_info, ('nonstandardport', 'scan')))
 	#else:
 	#	p.show()
-	#	quit()
+	#	sys.exit()
 
 #Handle easily categorized services early
 	elif dport in PriUDPPortNames:								#Client talking to server
@@ -1324,7 +1345,7 @@ def DNS_extract(p, meta, prefs, dests):
 					#print "Type: " + str(type(OneAn))		#All of type scapy.DNSRR
 					#Note: rclass 32769 appears to show up in mdns records from apple
 					if OneAn.rclass in (1, 32769):
-						if OneAn.type == 1:		#"IN" class and "A" type answer
+						if OneAn.type == 1:		#"IN" class and "A" type answer	#https://en.wikipedia.org/wiki/List_of_DNS_record_types
 							DNSIPAddr = rdata_string
 							DNSHostname = rrname_string.lower()
 
@@ -1488,12 +1509,12 @@ def DNS_extract(p, meta, prefs, dests):
 										state_set.add(("US", meta['sIP'], "UDP_3690", "listening", 'svn/server not confirmed', ()))
 										state_set.add(("TS", meta['sIP'], "TCP_9418", "listening", 'git/server not confirmed', ()))
 										state_set.add(("US", meta['sIP'], "UDP_9418", "listening", 'git/server not confirmed', ()))
-									elif rdata_string in ('', '_bp2p.', '_bp2p._tcp.', '_bp2p._tcp.local.', '_chat-files.', '_chat-files._tcp.', '_chat-files._tcp.local.', '_companion-link.', '_companion-link._tcp.', '_companion-link._tcp.local.', '_coupon_printer.', '_coupon_printer._tcp.', '_coupon_printer._tcp.local', '_dltouch.', '_dltouch._tcp.', '_dltouch._tcp.local.', '_hearing.', '_hearing._tcp.', '_hearing._tcp.local.', '_mamp.', '_mamp._tcp.', '_mamp._tcp.local.', '_net-assistant.', '_parentcontrol.', '_parentcontrol._tcp.', '_parentcontrol._tcp.local.', '_ptService.', '_ptService._tcp.', '_qmobile.', '_qdiscover.', '_rfb.', '_rfb._tcp.', '_rfb._tcp.local', '_tw-multipeer.', '_tw-multipeer._tcp.', '_tw-multipeer._tcp.local.', '_uscan.', '_uscan._tcp.', '_uscan._tcp.local.', '_uscans.', '_uscans._tcp.', '_uscans._tcp.local.', '_workstation.', '_workstation._tcp.', '_workstation._tcp.local.'):
+									elif rdata_string in ('', '_bp2p.', '_bp2p._tcp.', '_bp2p._tcp.local.', '_chat-files.', '_chat-files._tcp.', '_chat-files._tcp.local.', '_companion-link.', '_companion-link._tcp.', '_companion-link._tcp.local.', '_coupon_printer.', '_coupon_printer._tcp.', '_coupon_printer._tcp.local', '_device-info.', '_device-info._tcp.', '_device-info._tcp.local.', '_dltouch.', '_dltouch._tcp.', '_dltouch._tcp.local.', '_hearing.', '_hearing._tcp.', '_hearing._tcp.local.', '_mamp.', '_mamp._tcp.', '_mamp._tcp.local.', '_nasd.', '_nasd._tcp.', '_nasd._tcp.local.', '_net-assistant.', '_octoprint.', '_octoprint._tcp.', '_octoprint._tcp.local.', '_parentcontrol.', '_parentcontrol._tcp.', '_parentcontrol._tcp.local.', '_ptService.', '_ptService._tcp.', '_qmobile.', '_qdiscover.', '_rfb.', '_rfb._tcp.', '_rfb._tcp.local', '_tw-multipeer.', '_tw-multipeer._tcp.', '_tw-multipeer._tcp.local.', '_uscan.', '_uscan._tcp.', '_uscan._tcp.local.', '_uscans.', '_uscans._tcp.', '_uscans._tcp.local.', '_workstation.', '_workstation._tcp.', '_workstation._tcp.local.'):
 										pass
 									else:
 										debug_out("service scan reply:" + rdata_string, prefs, dests)
 										ShowPacket(p, meta, "service scan reply", HonorQuit, prefs, dests)
-										#quit()
+										#sys.exit()
 
 								#<DNSRR  rrname='_kerberos.{machine_name}.local.' type=TXT rclass=IN ttl=4500 rdata='LKDC:SHA1.......' (hash removed)
 								elif rrname_string.startswith('_kerberos.') and rrname_string.endswith('.local.') and rdata_string.startswith('LKDC:'):
@@ -1569,6 +1590,8 @@ def DNS_extract(p, meta, prefs, dests):
 						elif OneAn.type == 50:		#"IN" class and "NSEC3" answer					https://tools.ietf.org/html/rfc5155
 							pass
 						elif OneAn.type == 52:		#"IN" class and "TLSA" answer					https://tools.ietf.org/html/rfc6698
+							pass
+						elif OneAn.type == 65:		#"IN" class and "HTTPS" answer					https://en.wikipedia.org/wiki/List_of_DNS_record_types
 							pass
 						elif OneAn.type == 99:		#"IN" class and "SPF" answer					https://tools.ietf.org/html/rfc7208
 							pass
