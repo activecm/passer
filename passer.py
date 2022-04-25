@@ -1,12 +1,24 @@
 #!/usr/bin/env python
 """Multiprocessing version of passer."""
-#Copyright 2018 William Stearns <william.l.stearns@gmail.com>
+#Copyright 2018-2022 William Stearns <william.l.stearns@gmail.com>
 #Released under GPL v3
+
+from __future__ import print_function
+
+__version__ = '0.40'
+
+__author__ = 'William Stearns'
+__copyright__ = 'Copyright 2018-2022, William Stearns'
+__credits__ = ['William Stearns']
+__email__ = 'william.l.stearns@gmail.com'
+__license__ = 'GPL 3.0'
+__maintainer__ = 'William Stearns'
+__status__ = 'Production'				#Prototype, Development or Production
 
 #FIXME - on KeyboardInterrupt exception, drain input queue.
 
 from __future__ import print_function
-from ipaddress import summarize_address_range, IPv4Address, IPv6Address
+from ipaddress import IPv4Address, IPv6Address		#Not needed: summarize_address_range
 from multiprocessing import Process, current_process, Manager
 import multiprocessing
 import os
@@ -50,7 +62,7 @@ try:
 	from passer_lib import *		#Support functions for this script
 except ImportError:
 	sys.stderr.write('Unable to load passer_lib , exiting.\n')
-	quit()
+	sys.exit(1)
 
 if sys.version_info > (3, 0):           #Python 3
 	from queue import Empty, Full
@@ -60,10 +72,10 @@ else:					#Python 2
 try:
 	if not passer_lib_version:
 		sys.stderr.write('Unable to load passer_lib , exiting.\n')
-		quit()
+		sys.exit(1)
 except NameError:
 	sys.stderr.write('Unable to load passer_lib , exiting.\n')
-	quit()
+	sys.exit(1)
 
 #Note; this particular module hasn't been updated in a while and doesn't support python3.
 ##sudo port install GeoLiteCity py27-geoip py34-geoip py35-geoip py36-geoip
@@ -72,6 +84,8 @@ except NameError:
 
 #Instead, use this:
 #sudo pip3 install maxminddb-geolite2
+#or
+#sudo py39 /opt/local/bin/pip-3.9 install maxminddb-geolite2
 geolite_loaded = False
 try:
 	from geolite2 import geolite2
@@ -85,8 +99,6 @@ if os.path.exists("/etc/p0f/p0f.fp") or os.path.exists("/opt/local/share/p0f/p0f
 else:
 	sys.stderr.write("/etc/p0f/p0f.fp not found; please install p0f version 2 to enable OS fingerprinting.\n")
 	#FIXME - remember whether it's loaded or not and test this before trying to use p0f
-
-p_test_version = '0.39'
 
 Verbose = False
 ShowProgress = False			#In most handlers, spit out a letter when each handler finishes processing a packet
@@ -177,8 +189,8 @@ def output_handler(sh_da, prefs, dests):
 						print(out_string)			#.decode('utf-8')
 					except UnicodeDecodeError:
 						pass
-					except:
-						raise
+					#except:
+					#	raise	#Raise is the default action, no need to specify
 					if output_handler.log_h is not None:
 						try:
 							if sys.version_info > (3, 0):           #Python 3
@@ -188,8 +200,8 @@ def output_handler(sh_da, prefs, dests):
 							output_handler.log_h.flush()
 						except UnicodeDecodeError:
 							pass
-						except:
-							raise
+						#except:
+						#	raise	#Raise is the default action, no need to specify
 
 				elif out_format == 'csv':
 					out_csv = ','.join((out_rec[Type_e], out_rec[IPAddr_e], out_rec[Proto_e], out_rec[State_e], out_rec[Description_e] + ' ' + str(list(out_rec[Warnings_e])).replace(',', ' ').replace("'", '').strip('[]')))
@@ -197,8 +209,8 @@ def output_handler(sh_da, prefs, dests):
 						print(out_csv)				#.decode('utf-8')
 					except UnicodeDecodeError:
 						pass
-					except:
-						raise
+					#except:
+					#	raise	#Raise is the default action, no need to specify
 
 					if output_handler.log_h is not None:
 						try:
@@ -209,8 +221,8 @@ def output_handler(sh_da, prefs, dests):
 							output_handler.log_h.flush()
 						except UnicodeDecodeError:
 							pass
-						except:
-							raise
+						#except:
+						#	raise	#Raise is the default action, no need to specify
 
 				if prefs['active'] and not output_handler.need_to_exit:
 					if out_rec[IPAddr_e] not in ('', '0.0.0.0', '::', '0000:0000:0000:0000:0000:0000:0000:0000'):
@@ -527,10 +539,10 @@ def ip_lookup_traceroute_extract(ip_addr, prefs, dests):
 	if ip_addr and not ip_addr.startswith(('127.', '169.254.', 'fe80:', 'FE80:')) and (ip_addr not in ip_lookup_traceroute_extract.ips_researched) and ((':' not in ip_addr) or (prefs['trace_v6'])):
 		ip_lookup_traceroute_extract.ips_researched.append(ip_addr)
 
-		try:
-			compressed_path_to_ip = traceroute_hop_list(ip_addr, prefs['forced_interface'], prefs['per_packet_timeout'], prefs['hop_limit'], "")
-		except:
-			raise
+		#try:
+		compressed_path_to_ip = traceroute_hop_list(ip_addr, prefs['forced_interface'], prefs['per_packet_timeout'], prefs['hop_limit'], "")
+		#except:
+		#	raise	#This is the default action, no need to specify
 
 		path_to_ip = []
 		for one_hop in compressed_path_to_ip:
@@ -729,6 +741,35 @@ def ARP_handler(task_q, sh_da, prefs, dests):
 
 
 
+def ICMP_handler(task_q, sh_da, prefs, dests):
+	"""Extracts all needed information from the ICMP layer."""
+
+	os.nice(nice_raise + 2)							#Lower priority to give higher priority to critical tasks
+	debug_out(whatami('ICMP'), prefs, dests)
+
+	while True:
+		try:
+			(p, meta) = task_q.get(block=True, timeout=None)
+		except KeyboardInterrupt:
+			break
+		else:
+
+			if p is None:
+				break
+			#Do processing here
+			#p.show()
+			#sys.exit(86)
+			#dests['output'].put('ICMP processed: ' + str(p) + '/' + str(meta))
+
+			for statement in ICMP_extract(p, meta, prefs, dests):
+				dests['output'].put(statement)
+
+			Progress('C')
+
+	debug_out('Exiting ICMP', prefs, dests)
+
+
+
 def IP_handler(task_q, sh_da, prefs, dests):
 	"""Extracts all needed information from the IP layer."""
 
@@ -880,7 +921,7 @@ def single_packet_handler(highpri_task_q, lowpri_task_q, sh_da, layer_qs, prefs,
 
 	debug_out(whatami('single_packet'), prefs, dests)
 	#Layers that we won't send off for processing (though they may be used as part of processing their parent or other ancestor)
-	nosubmit_layers = ('DHCP options', 'DHCP6 Client Identifier Option', 'DHCP6 Elapsed Time Option', 'DHCP6 Identity Association for Non-temporary Addresses Option', 'DHCP6 Option Request Option', 'Ethernet', 'ICMPv6 Neighbor Discovery Option - Prefix Information', 'ICMPv6 Neighbor Discovery Option - Recursive DNS Server Option', 'ICMPv6 Neighbor Discovery Option - Route Information Option', 'ICMPv6 Neighbor Discovery Option - Source Link-Layer Address', 'Padding', 'Raw')
+	nosubmit_layers = ('DHCP options', 'DHCP6 Client Identifier Option', 'DHCP6 Elapsed Time Option', 'DHCP6 Identity Association for Non-temporary Addresses Option', 'DHCP6 Option Request Option', 'Ethernet', 'HTTP 1', 'HTTP Response', 'HTTP Request', 'ICMPv6 Neighbor Discovery - Router Solicitation', 'ICMPv6 Neighbor Discovery Option - Prefix Information', 'ICMPv6 Neighbor Discovery Option - Recursive DNS Server Option', 'ICMPv6 Neighbor Discovery Option - Route Information Option', 'ICMPv6 Neighbor Discovery Option - Source Link-Layer Address', 'IPv6 Extension Header - Hop-by-Hop Options Header', 'MLDv2 - Multicast Listener Report', 'NBNS query request', 'Padding', 'Raw')
 
 	while True:
 		#FIXME - the logic for when to exit is not correct.
@@ -934,6 +975,9 @@ def single_packet_handler(highpri_task_q, lowpri_task_q, sh_da, layer_qs, prefs,
 						layer_qs[packet_layer].put((pkt[packet_layer], packet_meta), block=False)		#COMMENT NOT CURRENTLY CORRECT: Default is block=True, timeout=None , so if the queue is full we'll get held up here until space is available.
 					except Full:
 						pass
+				#elif packet_layer in ('NBNS query request'):
+				#	pkt.show()
+				#	sys.exit(99)
 				elif packet_layer not in nosubmit_layers:
 					if Verbose:
 						debug_out('\nMissing layer: ' + packet_layer, prefs, dests)
@@ -949,6 +993,13 @@ def packet_stream_processor(name_param, pcap_interface, pcap_source_file, highpr
 
 	#Note - we do not lower priority if sniffing from an interface, only if reading from a pcap file; see below for "nice" statement
 	debug_out(whatami(name_param), prefs, dests)
+
+	#We have to use libpcap instead of scapy's built-in code because the latter won't attach complex bpfs
+	try:
+		conf.use_pcap = True
+	except:
+		config.use_pcap = True
+
 
 	if pcap_interface and pcap_source_file:
 		debug_out('Both pcap_interface: ' + str(pcap_interface) + ' and pcap_source_file: ' + str(pcap_source_file) + ' requested at the same time, exiting.', prefs, dests)
@@ -1012,7 +1063,7 @@ def packet_stream_processor(name_param, pcap_interface, pcap_source_file, highpr
 if __name__ == '__main__':
 	import argparse
 
-	parser = argparse.ArgumentParser(description='Passer version ' + str(p_test_version))
+	parser = argparse.ArgumentParser(description='Passer version ' + str(__version__))
 	parser.add_argument('-i', '--interface', help='Interface(s) from which to read packets (default is all interfaces)', required=False, default=[], nargs='*')
 	#parser.add_argument('-r', '--read', help='Pcap file(s) from which to read packets (use   -   for stdin)', required=False, default=[], nargs='*')	#Not supporting stdin at the moment
 	parser.add_argument('-r', '--read', help='Pcap file(s) from which to read packets', required=False, default=[], nargs='*')
@@ -1028,7 +1079,7 @@ if __name__ == '__main__':
 	#parser.add_argument('--debuglayers', required=False, default=False, action='store_true', help=argparse.SUPPRESS)						#Debug scapy layers, hidden option
 	parser.add_argument('-a', '--active', help='Perform active scanning to look up additional info', required=False, default=False, action='store_true')
 	parser.add_argument('--forced_interface', help='Interface to which to write active scan packets (not needed on Linux)', required=False, default=None)
-	parser.add_argument('-p', '--passive-fingerprinting', help='Enable Passive Fingerprinting Capabilities.', required=False, default=False, action='store_true')
+	parser.add_argument('-p', '--passive_fingerprinting', help='Enable Passive Fingerprinting Capabilities.', required=False, default=False, action='store_true')
 	(parsed, unparsed) = parser.parse_known_args()
 	cl_args = vars(parsed)
 
@@ -1039,7 +1090,7 @@ if __name__ == '__main__':
 	if cl_args['bpf']:
 		if len(unparsed) > 0:
 			sys.stderr.write('Too many arguments that do not match a parameter, exiting.\n')
-			quit()
+			sys.exit(1)
 	else:
 		if len(unparsed) == 0:
 			cl_args['bpf'] = ''
@@ -1047,18 +1098,18 @@ if __name__ == '__main__':
 			cl_args['bpf'] = str(unparsed[0])
 		else:
 			sys.stderr.write('Too many arguments that do not match a parameter.  Any chance you did not put the bpf expression in quotes?  Exiting.\n')
-			quit()
+			sys.exit(1)
 
 	# If Passive Finger Printing Capability is enabled.
 	if cl_args['passive_fingerprinting']:
 		print("\033[95m {}\033[00m".format("Smudge Enabled"))
-	# Create Sqlite DB for Smudge Signatures
+		# Create Sqlite DB for Smudge Signatures
 		passive_data.setup_db()
-	# Create DB  Connection
+		# Create DB  Connection
 		conn = passive_data.create_con()
 		if passive_data.test_github_con():
 			tcp_sig_data = pull_data.import_data()
-    # Iterate over JSON Objects
+			# Iterate over JSON Objects
 			for i in tcp_sig_data['signature_list']:
 				try:
 					smud = tcp_sig(i)
@@ -1077,6 +1128,7 @@ if __name__ == '__main__':
 	mkdir_p(cache_dir + '/ipv4/')
 	mkdir_p(cache_dir + '/ipv6/')
 	mkdir_p(cache_dir + '/dom/')
+
 
 	mgr = Manager()				#This section sets up a shared data dictionary; all items in it must be Manager()-based shared data structures
 	shared_data = {}
@@ -1138,6 +1190,10 @@ if __name__ == '__main__':
 	layer_queues['ARP'] = multiprocessing.Queue(maxsize=max_handler_qsz)
 	ARP_p = Process(name='ARP_p', target=ARP_handler, args=(layer_queues['ARP'], shared_data, cl_args, destinations))
 	ARP_p.start()
+
+	layer_queues['ICMP'] = multiprocessing.Queue(maxsize=max_handler_qsz)
+	ICMP_p = Process(name='ICMP_p', target=ICMP_handler, args=(layer_queues['ICMP'], shared_data, cl_args, destinations))
+	ICMP_p.start()
 
 	layer_queues['IP'] = multiprocessing.Queue(maxsize=max_handler_qsz)
 	IP_p = Process(name='IP_p', target=IP_handler, args=(layer_queues['IP'], shared_data, cl_args, destinations))
@@ -1208,6 +1264,7 @@ if __name__ == '__main__':
 	#Wait until all other processes finish:
 	#template_p.join()
 	ARP_p.join()
+	ICMP_p.join()
 	IP_p.join()
 	TCP_p.join()
 	UDP_p.join()
@@ -1222,5 +1279,3 @@ if __name__ == '__main__':
 		destinations['suspicious'].put(None)
 
 	sys.stderr.write('\nDone.\n')
-
-
