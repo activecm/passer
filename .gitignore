@@ -102,3 +102,15 @@ venv.bak/
 
 # mypy
 .mypy_cache/
+
+# Sqlite DB files
+*.db
+
+# VScode Launch.json files
+.vscode/
+
+# Packet Capture Files
+*.pcap
+
+# Python Non Integrated Test
+trial.py
