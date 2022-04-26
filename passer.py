@@ -17,7 +17,6 @@ __status__ = 'Production'				#Prototype, Development or Production
 
 #FIXME - on KeyboardInterrupt exception, drain input queue.
 
-from __future__ import print_function
 from ipaddress import IPv4Address, IPv6Address		#Not needed: summarize_address_range
 from multiprocessing import Process, current_process, Manager
 import multiprocessing
