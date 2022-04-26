@@ -20,10 +20,11 @@ RUN pip install --no-cache-dir -r /requirements.txt && \
 # Disable scapy DNS lookups
 echo 'noenum = [ Resolve(), TCP_SERVICES, UDP_SERVICES ]' >> $HOME/.scapy_startup.py && \
 # Create passer's cache directory for suspicious and trusted IPs
-mkdir $HOME/.passer/
+mkdir $HOME/.passer/ /smudge/
 VOLUME $HOME/.passer/
 
 COPY *.py /
+COPY smudge/*.py /smudge/
 
 ENTRYPOINT ["python", "/passer.py"]
 
