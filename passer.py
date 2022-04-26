@@ -4,6 +4,7 @@
 #Released under GPL v3
 
 from __future__ import print_function
+from turtle import color
 
 __version__ = '0.40'
 
@@ -785,12 +786,18 @@ def IP_handler(task_q, sh_da, prefs, dests):
 						packet_signature = signature(p)
 						if cl_args['devel'] != False:
 							dev_out = "\n\nSignature Identified for: {IP} --> {signature}".format(IP=p['IP'].src, signature=str(packet_signature))
-							print("\033[91m{}\033[00m".format(dev_out))
+							if cl_args['color'] != "False":
+								print("\033[91m{}\033[00m".format(dev_out))
+							else:
+								print(dev_out)
 						mo = matching.match(packet_signature)
 						a = mo[1][0]
 						b = query_object(acid=a[1], platform=a[2], tcp_flag=a[3], comments=a[13], version=a[4], ittl=a[5], olen=a[6], mss=a[7], wsize=a[8], scale=a[9], olayout=a[10], quirks=a[11], pclass=a[12])
 						m_out = "Match at: {percent} to signature {signature}".format(percent=mo[0], signature=b)
-						print("\033[96m{}\033[00m" .format(m_out))
+						if cl_args['color'] != "False":
+							print("\033[96m{}\033[00m".format(m_out))
+						else:
+							print(m_out)
 						print("Signature identified as {platform}".format(platform=b.platform))
 						print("Comments: {comments}\n\n".format(comments=b.sig_comments))
 					except:
@@ -1078,6 +1085,7 @@ if __name__ == '__main__':
 	#parser.add_argument('--debuglayers', required=False, default=False, action='store_true', help=argparse.SUPPRESS)						#Debug scapy layers, hidden option
 	parser.add_argument('-a', '--active', help='Perform active scanning to look up additional info', required=False, default=False, action='store_true')
 	parser.add_argument('--forced_interface', help='Interface to which to write active scan packets (not needed on Linux)', required=False, default=None)
+	parser.add_argument('-c', '--color', help='Enable or disable color coded text.', required=False, default=True)
 	parser.add_argument('-p', '--passive_fingerprinting', help='Enable Passive Fingerprinting Capabilities.', required=False, default=False, action='store_true')
 	(parsed, unparsed) = parser.parse_known_args()
 	cl_args = vars(parsed)
@@ -1085,6 +1093,7 @@ if __name__ == '__main__':
 	cl_args['geolite_loaded'] = geolite_loaded
 	cl_args['scapy_traceroute_loaded'] = scapy_traceroute_loaded
 	cl_args['ip2asn_loaded'] = ip2asn_loaded
+
 
 	if cl_args['bpf']:
 		if len(unparsed) > 0:
@@ -1101,7 +1110,10 @@ if __name__ == '__main__':
 
 	# If Passive Finger Printing Capability is enabled.
 	if cl_args['passive_fingerprinting']:
-		print("\033[95m {}\033[00m".format("Smudge Enabled"))
+		if cl_args['color'] == True:
+			print("\033[95m {}\033[00m".format("Smudge Enabled"))
+		else:
+			print("Smudge Enabled")
 		# Create Sqlite DB for Smudge Signatures
 		passive_data.setup_db()
 		# Create DB  Connection
