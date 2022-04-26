@@ -36,9 +36,9 @@ glad to update the script.
 ### Ubuntu/Debian and deb-based distros
 ```bash
 # Install system dependencies
-sudo apt-get install arp-scan ettercap-text-only nmap wireshark 
+sudo apt-get install arp-scan ettercap-text-only nmap wireshark python3-pip
 # Install python dependencies
-sudo pip install -r requirements.txt
+sudo -H pip3 install -r requirements.txt
 # Prevent Scapy from performing DNS lookups
 echo 'noenum = [ Resolve(), TCP_SERVICES, UDP_SERVICES ]' >> ~/.scapy_startup.py
 ```
@@ -46,9 +46,9 @@ echo 'noenum = [ Resolve(), TCP_SERVICES, UDP_SERVICES ]' >> ~/.scapy_startup.py
 ### Redhat/CentOS/Fedora and rpm-based distros
 ```bash
 # Install system dependencies
-sudo yum install arp-scan ettercap nmap wireshark
+sudo yum install arp-scan ettercap nmap wireshark python3-pip
 # Install python dependencies
-sudo pip install -r requirements.txt
+sudo -H pip3 install -r requirements.txt
 # Prevent Scapy from performing DNS lookups
 echo 'noenum = [ Resolve(), TCP_SERVICES, UDP_SERVICES ]' >> ~/.scapy_startup.py
 ```
@@ -58,19 +58,15 @@ echo 'noenum = [ Resolve(), TCP_SERVICES, UDP_SERVICES ]' >> ~/.scapy_startup.py
 To install scapy, see the [installation guide](https://scapy.readthedocs.io/en/latest/installation.html#windows).
 
 ### Docker
-
 Passer also comes packaged as a Docker image. If you don't already have Docker here is a quick and dirty way to install it on Linux:
-
 ```bash
 curl -fsSL https://get.docker.com | sh -
 ```
-
 Otherwise, follow the [install instructions](https://docs.docker.com/get-docker/) for your operating system.
 
-For most uses, we recommend the [`passer`](https://github.com/activecm/passer/blob/master/passer) script included in this repo. This script will handle all docker-specific
-
+For most uses, we recommend the [`passer`](https://github.com/activecm/passer/blob/passer-ng/passer) script included in this repo. This script will handle all docker-specific requirements.
 ```bash
-wget https://raw.githubusercontent.com/activecm/passer/master/passer
+wget https://raw.githubusercontent.com/activecm/passer/passer-ng/passer
 chmod +x passer
 ```
 
@@ -84,19 +80,19 @@ docker run --rm --name=passer -i --init --net=host --cap-add=net_raw activecm/pa
 
 In order to stop passer, press `Ctrl-C`.
 
+
 ## Examples
 
 ### Sniff live as root
-
 ```bash
 /path/to/passer.py
+# or with docker
+passer
 ```
-
 This sniffs from all network interfaces and sends all output
 lines to your console.
 
 ### Sniff live as a non-root user
-
 ```bash
 sudo /path/to/passer.py
 ```
@@ -106,59 +102,65 @@ su - -c '/path/to/passer.py'
 ```
 
 ### Sniff live as root, but only from one interface
-
 ```bash
 /path/to/passer.py -i IfaceName
+# or with docker
+passer -i IfaceName
 ```
 Running `route` should give some live interfaces you might use. 
-> :grey_exclamation: `-i` is incompatible with `-r`.
+"-i" and "-r" are incompatible in passer, but can be used together in passer-ng.
 
 ### Read packets from a pcap file; no root privileges needed
-
 ```bash
 /path/to/passer.py -r /path/to/packets.pcap
+# or with docker
+passer -v /path/to/packets.pcap:/packets.pcap -r /packets.pcap
 ```
-
-> :grey_exclamation: `-r` is incompatible with `-i`.
+"-i" and "-r" are incompatible in passer, but can be used together in passer-ng.
 
 ### Accept raw pcap data on stdin
-
 ```bash
 cat packetdata.pcap | ./passer.py -r /proc/self/fd/0
 zcat packetdata.pcap.gz | ./passer.py -r /proc/self/fd/0
 bzcat packetdata.pcap.bz2 | ./passer.py -r /proc/self/fd/0
 tcpdump -i eth0 -qtnp -w - | ./passer.py -r /proc/self/fd/0
 # etc...
+# or with docker
+cat packetdata.pcap | passer -r /proc/self/fd/0
 ```
-
 This lets you capture packets with any tool that can save
 packets to a pcap file, and later process them with passer on a
 different system.
 
 ### Save output lines to a text file for later processing
-
 ```bash
 /path/to/passer.py -l /path/to/networkinfo.txt
+# or with docker
+touch /path/to/networkinfo.txt
+passer -v /path/to/networkinfo.txt.pcap:/networkinfo.txt -l /networkinfo.txt
 ```
 
 ### Suppress warnings and other debugging info
-
 ```bash
 /path/to/passer.py 2>/dev/null
+# or with docker
+passer 2>/dev/null
 ```
 
 ### Show help screen
-
 ```bash
 /path/to/passer.py -h
+# or with docker
+passer -h
 ```
 
 ### Save "odd"/unhandled packets to a pcap file
-
 ```bash
 /path/to/passer.py -u /path/to/oddpackets.pcap
+# or with docker
+touch /path/to/oddpackets.pcap
+passer -v /path/to/oddpackets.pcap:/oddpackets.pcap -u /oddpackets.pcap
 ```
-
 This is generally intended for the development process; packets
 saved to this file are ones that need to have signatures written.  If
 you'd like to help improve the program, get in touch with the author,
@@ -167,17 +169,16 @@ descriptions of services, and patches to the program are gratefully
 accepted.
 
 ### Apply a BPF filter to limit which packets are processed
-
 This _should_ be as simple as placing the BPF filter in single
 quotes at the end of the command line.  As of version 1.16, the
 underlying library does not appear to successfully use the supplied
 filter, but there's a workaround.  Use tcpdump to do the filtering, and
 hand the pared-down set of packets to passer on stdin, like above:
-
 ```bash
 tcpdump -r packets.pcap -w - 'icmp or arp' | ./passer.py -r /proc/self/fd/0
+# or with docker
+tcpdump -r packets.pcap -w - 'icmp or arp' | passer -r /proc/self/fd/0
 ```
-
 See the "Sample filters" section, below, for some suggestions of
 filters to use in either capturing packets in advance or live sniffing.
 
