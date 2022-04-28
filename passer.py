@@ -94,12 +94,6 @@ except ImportError:
 else:
 	geolite_loaded = True
 
-if os.path.exists("/etc/p0f/p0f.fp") or os.path.exists("/opt/local/share/p0f/p0f.fp") or os.path.exists("/usr/share/p0f/p0f.fp"):
-	load_module("p0f")
-else:
-	sys.stderr.write("/etc/p0f/p0f.fp not found; please install p0f version 2 to enable OS fingerprinting.\n")
-	#FIXME - remember whether it's loaded or not and test this before trying to use p0f
-
 Verbose = False
 ShowProgress = False			#In most handlers, spit out a letter when each handler finishes processing a packet
 out_format = 'csv'			#Either 'json' or 'csv'
@@ -779,7 +773,7 @@ def IP_handler(task_q, sh_da, prefs, dests):
 	while True:
 		try:
 			(p, meta) = task_q.get(block=True, timeout=None)
-            #### Smudge has entered the chat.
+			#### Smudge has entered the chat.
 			if cl_args['passive_fingerprinting'] != False and p.haslayer("TCP"):
 				if 'S' in str(p['TCP'].flags):
 					try:
