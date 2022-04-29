@@ -386,6 +386,11 @@ network:
 'net 1.2'
 ```
 
+## SMUDGE
+
+Passive OS Fingerprinting via SMUDGE.
+[SMUDGE Documentation](smudge/README.md)
+
 ## More info
 
 Questions?  Bug reports?  Issues?  Try william.l.stearns@gmail.com and

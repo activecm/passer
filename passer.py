@@ -774,7 +774,10 @@ def IP_handler(task_q, sh_da, prefs, dests):
 		try:
 			(p, meta) = task_q.get(block=True, timeout=None)
 			#### Smudge has entered the chat.
-			if cl_args['passive_fingerprinting'] != False and p.haslayer("TCP"):
+			print(p)
+			print(str(type(p)))
+			'''
+			if (cl_args['passive_fingerprinting'] != False) and p.haslayer("TCP"):
 				if 'S' in str(p['TCP'].flags):
 					try:
 						packet_signature = signature(p)
@@ -796,6 +799,7 @@ def IP_handler(task_q, sh_da, prefs, dests):
 						print("Comments: {comments}\n\n".format(comments=b.sig_comments))
 					except:
 						pass
+			'''
 		except KeyboardInterrupt:
 			break
 		else:
