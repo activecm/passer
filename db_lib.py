@@ -2,29 +2,29 @@
 """Test library for sqlite storage."""
 #All other functions call setup_db automatically if the dbfile doesn't exist, so you don't need to call that by hand.
 
-__version__ = '0.2.2'
+__version__ = '0.2.8'
 
 __author__ = 'David Quartarolo'
 __copyright__ = 'Copyright 2022, David Quartarolo'
 __credits__ = ['David Quartarolo', 'William Stearns']
 __email__ = 'david@activecountermeasures.com'
-__license__ = 'WTFPL'
-__maintainer__ = 'David Quartarolo'
+__license__ = 'WTFPL'					#http://www.wtfpl.net/
+__maintainer__ = 'William Stearns'
 __status__ = 'Development'				#Prototype, Development or Production
 
 
-import sqlite3
-import os
-import sys
-import json
 import hashlib
+import json
+import os
+import sqlite3
 import string
-from xmlrpc.client import Boolean
+import sys
 from typing import Any
-
+from xmlrpc.client import Boolean
 
 sqlite_timeout = 20					#Default timeout, in seconds, can have fractions.  Without it, timeout is 5.
 paranoid = True						#Run some additional checks
+verbose_status = True					#Show some additional status output on stderr
 
 def sha256_sum(raw_object) -> str:
     """Creates a hex format sha256 hash/checksum of the given string/bytes object."""
@@ -80,8 +80,9 @@ def insert_key(dbfile: str, key_str: str, value_obj: Any) -> Boolean:
         existing_value = select_key(dbfile, key_str)
         if existing_value and value_str in existing_value:
             already_inserted = True
-            #sys.stderr.write(' ')
-            #sys.stderr.flush()
+            #if verbose_status:
+            #    sys.stderr.write(' ')
+            #    sys.stderr.flush()
         else:
             with sqlite3.connect(dbfile, timeout=sqlite_timeout) as conn:
                 #It appears from https://www.sqlitetutorial.net/sqlite-replace-statement/ that the following will correctly insert (if not there) or replace (if there).
@@ -185,7 +186,8 @@ def should_add(dbfile: str, key_str: str, existing_list: list, new_value: str) -
 
     decision = True
     #Don't add a country code (like "JP") to the ip_locations database if there's already an entry there that starts with that country code (like "JP;Japan/Tokyo/Tokyo")
-    if dbfile.endswith( ('ip_locationss.sqlite3') ) and len(existing_list) > 0 and len(new_value) == 2:
+    #todo: look for ip_locations and sqlite3 in the filename somewhere, not necessarily at the end
+    if dbfile.endswith( ('ip_locations.sqlite3') ) and len(existing_list) > 0 and len(new_value) == 2:
         for one_exist in existing_list:
             if one_exist.startswith(new_value + ';'):
                 decision = False
@@ -220,6 +222,7 @@ def add_to_db_list(dbfile: str, key_str: str, new_value: str):
         if not os.path.exists(dbfile):
             setup_db(dbfile)
 
+        #todo: remove this
         current_val_list = select_key(dbfile, key_str)	#Perform an early (read-only) check to see if the value is already in; if so, skip.  THIS ASSUMES that removals are unlikely.
         if current_val_list and new_value in current_val_list:
             already_inserted = True
@@ -239,35 +242,299 @@ def add_to_db_list(dbfile: str, key_str: str, new_value: str):
                     modified_rows = conn.execute("REPLACE INTO main (KEY_STR, JSON_STR) values (?, ?)", (key_str, json.dumps(existing_list))).rowcount
                 else:
                     already_inserted = True
-                    #sys.stderr.write(' ')
-                    #sys.stderr.flush()
+                    #if verbose_status:
+                    #    sys.stderr.write(' ')
+                    #    sys.stderr.flush()
                 conn.commit()
 
     return already_inserted or (modified_rows >= 1)
 
 
-def add_to_db_list_large_value(dbfile: str, large_dbfile: str, key_str: str, new_value: str):
+def add_to_db_multiple_lists(dbfile: str, key_value_list: list):		# pylint: disable=too-many-branches
+    """Inside the given database, process multiple key/value lists/tuples.  For each value, add it to the existing list if not already there."""
+    #key_value_list is in this form:
+    #[
+    #    [key1, [value1, value2, value3...]],
+    #    [key2, [value4]],
+    #    [key3, [value5, value6]]
+    #]
+    #This code will also accept
+    #    (key2, value4),
+    #instead of
+    #    (key2, [value4]),
+    #
+    #This approach allows us to commit a large number of writes without requiring a full database rewrite for every key-value pair (which appears to be the case for sqlite3.
+    #The total number of tuples handed in this way should be limited; while some number greater than 1 will reduce total writes,
+    #the more lines there are the longer the database is held with an exclusive lock, perhaps leading to locking out other users.
+    #Perhaps some number between 10 and 1000, then sleeping a small fraction of a second and doing it again.
+
+    any_changes_made = False
+    modified_rows = 0
+
+    existing_cache = {}					#This holds key-value pairs which 1) are pulled out of the database, 2) have new values appended, and 3) are written back just before we release the lock.
+
+    if dbfile:						#If dbfile is None, don't do anything.
+        if not os.path.exists(dbfile):
+            setup_db(dbfile)
+
+        with sqlite3.connect(dbfile, timeout=sqlite_timeout) as conn:
+            #We need to protect with an exclusive transaction...commit pair so that no changes can happen to the existing_lists while we pull in all these changes.
+            conn.execute("BEGIN EXCLUSIVE TRANSACTION")
+
+            #Process each key/value pair in key_value_list.
+            for addition_tuple in key_value_list:
+                addition_key = addition_tuple[0]
+                #If this key is in the database, we pull its existing values back (or assign an empty list if not)
+                if addition_key not in existing_cache:
+                    existing_cache[addition_key] = []
+                    entry_cursor = conn.execute("SELECT JSON_STR FROM main WHERE KEY_STR=?", [addition_key])
+                    entry = entry_cursor.fetchall()
+                    if len(entry) > 0:
+                        existing_cache[addition_key] = json.loads(entry[0][0])
+
+                #Now that we have the existing entries for that key, we add new entries provided by key_value_list.
+                if isinstance(addition_tuple[1], (list, tuple)):
+                    for new_value in addition_tuple[1]:	#addition_tuple[1] is the list/tuple of new values to add.
+                        if new_value not in existing_cache[addition_key] and should_add(dbfile, addition_key, existing_cache[addition_key], new_value):
+                            existing_cache[addition_key].append(new_value)
+                            any_changes_made = True
+                else:						#Since it's not a list or tuple, we assume it's a single value to process
+                    new_value = addition_tuple[1]		#addition_tuple[1] is the sole new value to add.
+                    if new_value not in existing_cache[addition_key] and should_add(dbfile, addition_key, existing_cache[addition_key], new_value):
+                        existing_cache[addition_key].append(new_value)
+                        any_changes_made = True
+
+            #Only write back existing blocks at the last moment.  (Future: only write the changed ones.)
+            if any_changes_made:
+                for one_key in existing_cache:		# pylint: disable=consider-using-dict-items
+                    #Ideally we'd use conn.executemany and feed it existing_cache.items() , but we need the existing_lists converted by jsson.dumps, so I don't think we can.
+                    modified_rows += conn.execute("REPLACE INTO main (KEY_STR, JSON_STR) values (?, ?)", (one_key, json.dumps(existing_cache[one_key]))).rowcount
+                    if verbose_status:
+                        sys.stderr.write('.')
+            else:
+                if verbose_status:
+                    sys.stderr.write(' ')
+
+            conn.commit()
+            if verbose_status:
+                #sys.stderr.write(' Done.\n')
+                sys.stderr.flush()
+
+    return (not any_changes_made) or (modified_rows >= 1)
+
+
+def buffer_merges(dbfile: str, key_str: str, new_values: list, max_adds: int):
+    """Buffer up writes that will eventually get merged into their respective databases.
+    You _must_ call this with buffer_merges('', '', [], 0) to flush any remaining writes before shutting down."""
+
+    if 'additions' not in buffer_merges.__dict__:
+        buffer_merges.additions = {}			#Key is the database file, value is a list of queued writes for that database::
+        #{"dbfile1":
+        #  [
+        #    [key1, [value1, value2, value3...]],
+        #    [key2, [value4]],
+        #    [key3, [value5, value6]]
+        #  ]
+        #}
+
+    success = True
+
+    if dbfile and new_values:				#We don't check for an empty key_str as it's technically legal to have "" as a key.
+        if not os.path.exists(dbfile):
+            setup_db(dbfile)
+        if isinstance(new_values, (list, tuple)):
+            new_values_list = new_values
+        else:
+            new_values_list = [new_values]
+        #First, add any new values to the "additions" structure.
+        if dbfile not in buffer_merges.additions:
+            buffer_merges.additions[dbfile] = [ [key_str, new_values_list] ]
+        else:
+            found_key = None
+            for x in range(len(buffer_merges.additions[dbfile])):
+                if buffer_merges.additions[dbfile][x][0] == key_str:
+                    found_key = x
+                    break
+            if found_key is None:
+                #Add a new line with the new values
+                #found_key = len(buffer_merges.additions[dbfile])	#This is technically where the new entry will be appended to, but we don't need found_key to append to the list.
+                buffer_merges.additions[dbfile].append([key_str, new_values_list])
+            else:
+                #Merge new values into buffer_merges.additions[dbfile][found_key]
+                for one_val in new_values_list:
+                    if one_val not in buffer_merges.additions[dbfile][found_key][1]:
+                        buffer_merges.additions[dbfile][found_key][1].append(one_val)
+
+    for one_db in buffer_merges.additions:		# pylint: disable=consider-using-dict-items
+        if len(buffer_merges.additions[one_db]) >= max_adds:
+            success = success and add_to_db_multiple_lists(one_db, buffer_merges.additions[one_db])
+            buffer_merges.additions[one_db] = []
+
+    return success
+
+
+def remove_from_db_multiple_lists(dbfile: str, key_value_list: list):		# pylint: disable=too-many-branches
+    """Inside the given database, process multiple key/value lists/tuples.  For each value, remove it from the existing list if there."""
+    #key_value_list is in this form:
+    #[
+    #    [key1, [value1, value2, value3...]],
+    #    [key2, [value4]],
+    #    [key3, [value5, value6]]
+    #]
+    #This code will also accept
+    #    (key2, value4),
+    #instead of
+    #    (key2, [value4]),
+    #
+    #This approach allows us to commit a large number of writes without requiring a full database rewrite for every key-value pair (which appears to be the case for sqlite3.
+    #The total number of tuples handed in this way should be limited; while some number greater than 1 will reduce total writes,
+    #the more lines there are the longer the database is held with an exclusive lock, perhaps leading to locking out other users.
+    #Perhaps some number between 10 and 1000, then sleeping a small fraction of a second and doing it again.
+
+    any_changes_made = False
+    modified_rows = 0
+
+    existing_cache = {}					#This holds key-value pairs which 1) are pulled out of the database, 2) may have values removed, and 3) are written back just before we release the lock.
+
+    if dbfile:						#If dbfile is None, don't do anything.
+        if not os.path.exists(dbfile):
+            setup_db(dbfile)
+
+        with sqlite3.connect(dbfile, timeout=sqlite_timeout) as conn:
+            #We need to protect with an exclusive transaction...commit pair so that no changes can happen to the existing_lists while we pull in all these changes.
+            conn.execute("BEGIN EXCLUSIVE TRANSACTION")
+
+            #Process each key/value pair in key_value_list.
+            for removal_tuple in key_value_list:
+                removal_key = removal_tuple[0]
+                #If this key is in the database, we pull its existing values back (or assign an empty list if not)
+                if removal_key not in existing_cache:
+                    existing_cache[removal_key] = []
+                    entry_cursor = conn.execute("SELECT JSON_STR FROM main WHERE KEY_STR=?", [removal_key])
+                    entry = entry_cursor.fetchall()
+                    if len(entry) > 0:
+                        existing_cache[removal_key] = json.loads(entry[0][0])
+
+                #Now that we have the existing entries for that key, we remove all entries provided by key_value_list.
+                if isinstance(removal_tuple[1], (list, tuple)):
+                    for del_value in removal_tuple[1]:	#removal_tuple[1] is the list/tuple of new values to remove.
+                        while del_value in existing_cache[removal_key]:
+                            existing_cache[removal_key].remove(del_value)
+                            any_changes_made = True
+                else:						#Since it's not a list or tuple, we assume it's a single value to process
+                    del_value = removal_tuple[1]		#removal_tuple[1] is the sole new value to remove.
+                    while del_value in existing_cache[removal_key]:
+                        existing_cache[removal_key].remove(del_value)
+                        any_changes_made = True
+
+            #Only write back existing blocks at the last moment.  (Future: only write the changed ones.)
+            if any_changes_made:
+                for one_key in existing_cache:		# pylint: disable=consider-using-dict-items
+                    #Ideally we'd use conn.executemany and feed it existing_cache.items() , but we need the existing_lists converted by jsson.dumps, so I don't think we can.
+                    if existing_cache[one_key] == []:
+                        modified_rows += conn.execute("DELETE FROM main WHERE KEY_STR=?", (one_key,)).rowcount
+                        if verbose_status:
+                            sys.stderr.write('d')
+                    else:
+                        modified_rows += conn.execute("REPLACE INTO main (KEY_STR, JSON_STR) values (?, ?)", (one_key, json.dumps(existing_cache[one_key]))).rowcount
+                        if verbose_status:
+                            sys.stderr.write('.')
+            else:
+                if verbose_status:
+                    sys.stderr.write(' ')
+
+            conn.commit()
+            if verbose_status:
+                #sys.stderr.write(' Done.\n')
+                sys.stderr.flush()
+
+    return (not any_changes_made) or (modified_rows >= 1)
+
+
+def buffer_delete_vals(dbfile: str, key_str: str, delete_values: list, max_dels: int):
+    """Buffer up values that will eventually get removed from their respective databases.
+    You _must_ call this with buffer_delete_vals('', '', [], 0) to flush any remaining writes before shutting down."""
+
+    if 'removals' not in buffer_delete_vals.__dict__:
+        buffer_delete_vals.removals = {}			#Key is the database file, value is a list of queued writes for that database::
+        #{"dbfile1":
+        #  [
+        #    [key1, [value1, value2, value3...]],
+        #    [key2, [value4]],
+        #    [key3, [value5, value6]]
+        #  ]
+        #}
+
+    success = True
+
+    if dbfile and delete_values:				#We don't check for an empty key_str as it's technically legal to have "" as a key.
+        if not os.path.exists(dbfile):
+            setup_db(dbfile)
+        if isinstance(delete_values, (list, tuple)):
+            delete_values_list = delete_values
+        else:
+            delete_values_list = [delete_values]
+        #First, add any deletion values to the "removals" structure.
+        if dbfile not in buffer_delete_vals.removals:
+            buffer_delete_vals.removals[dbfile] = [ [key_str, delete_values_list] ]
+        else:
+            found_key = None
+            for x in range(len(buffer_delete_vals.removals[dbfile])):
+                if buffer_delete_vals.removals[dbfile][x][0] == key_str:
+                    found_key = x
+                    break
+            if found_key is None:
+                #Add a new line with the new values
+                #found_key = len(buffer_delete_vals.removals[dbfile])	#This is technically where the new entry will be appended to, but we don't need found_key to append to the list.
+                buffer_delete_vals.removals[dbfile].append([key_str, delete_values_list])
+            else:
+                #Merge new values into buffer_delete_vals.removals[dbfile][found_key]
+                for one_val in delete_values_list:
+                    if one_val not in buffer_delete_vals.removals[dbfile][found_key][1]:
+                        buffer_delete_vals.removals[dbfile][found_key][1].append(one_val)
+
+    for one_db in buffer_delete_vals.removals:			# pylint: disable=consider-using-dict-items
+        if len(buffer_delete_vals.removals[one_db]) >= max_dels:
+            success = success and remove_from_db_multiple_lists(one_db, buffer_delete_vals.removals[one_db])
+            buffer_delete_vals.removals[one_db] = []
+
+    return success
+
+
+def add_to_db_list_large_value(dbfile: str, large_dbfile: str, key_str: str, new_value: str, max_adds: int):
     """Inside the given database, add the new_value to the list for key_str and write it back if changed."""
     #Assumes you've already initialized the dbfile.
     #Also assumes the Value part of the database record is a list
 
     if dbfile and large_dbfile:
+        if not os.path.exists(dbfile):
+            setup_db(dbfile)
+        if not os.path.exists(large_dbfile):
+            setup_db(large_dbfile)
         value_sum = sha256_sum(new_value)
-        success2 = insert_key(large_dbfile, value_sum, [new_value])
-        success1 = add_to_db_list(dbfile, key_str, value_sum)
-        valsequal = False
-        retrieved_object = select_key_large_value(dbfile, large_dbfile, key_str)
-        for one_retrieved in retrieved_object:
-            if new_value == one_retrieved:
-                valsequal = True
-        if valsequal is False:
-            sys.stderr.write("Mismatch in add_to_db_list_large_value\n")
-            sys.stderr.write(str(key_str) + "\n")
-            sys.stderr.write(str(new_value) + "\n")
-            sys.stderr.write(str(value_sum) + "\n")
-            sys.stderr.write(str(retrieved_object) + "\n")
-            sys.stderr.flush()
-            sys.exit(1)
+        #Old approach that added one item at a time to 2 databases
+        #success2 = insert_key(large_dbfile, value_sum, [new_value])
+        #success1 = add_to_db_list(dbfile, key_str, value_sum)
+        #New approach that buffers up writes
+        success2 = buffer_merges(large_dbfile, value_sum, [new_value], max_adds)
+        success1 = buffer_merges(dbfile, key_str, [value_sum], max_adds)
+        #We can't do the following; the writes may not yet have made it out to disk as they're being buffered.
+        #if paranoid:
+        #    valsequal = False
+        #    retrieved_object = select_key_large_value(dbfile, large_dbfile, key_str)
+        #    for one_retrieved in retrieved_object:
+        #        if new_value == one_retrieved:
+        #            valsequal = True
+        #    if valsequal is False:
+        #        sys.stderr.write("Mismatch in add_to_db_list_large_value\n")
+        #        sys.stderr.write(str(key_str) + "\n")
+        #        sys.stderr.write(str(new_value) + "\n")
+        #        sys.stderr.write(str(value_sum) + "\n")
+        #        sys.stderr.write(str(retrieved_object) + "\n")
+        #        sys.stderr.flush()
+        #        sys.exit(1)
+        #else:
+        valsequal = True
 
     return valsequal and success1 and success2
 

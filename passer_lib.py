@@ -32,6 +32,9 @@ import errno
 from scapy.all import *			#Required for Scapy 2.0 and above
 use_scapy_all = True
 
+from db_lib import buffer_merges
+from normalize_ip import ip_addr_obj
+
 
 #======== Constants ========
 KeepGoing = False		#Dont change this - it's an internal value to make the code more readable.  Change third param of ReportId instead.
@@ -754,6 +757,173 @@ def UnhandledPacket(up_packet, prefs, dests):
 		dests['unhandled'].put(up_packet)
 
 
+def save_to_db(out_rec, prefs, dests):
+	"""Take the fields in an output record tuple/list into the appropriate sqlite database."""
+
+	max_adds = 50
+
+	hostname_ips = prefs['db_dir'] + 'hostname_ips.sqlite3'		#Note; the databases are created automatically
+	ip_asns = prefs['db_dir'] + 'ip_asns.sqlite3'
+	ip_client_ports = prefs['db_dir'] + 'ip_client_ports.sqlite3'
+	ip_client_protocols = prefs['db_dir'] + 'ip_client_protocols.sqlite3'
+	ip_closed_servers = prefs['db_dir'] + 'ip_closed_servers.sqlite3'
+	ip_flags = prefs['db_dir'] + 'ip_flags.sqlite3'
+	ip_hostnames = prefs['db_dir'] + 'ip_hostnames.sqlite3'
+	ip_locations = prefs['db_dir'] + 'ip_locations.sqlite3'
+	ip_macaddrs = prefs['db_dir'] + 'ip_macaddrs.sqlite3'
+	ip_mx_for = prefs['db_dir'] + 'ip_mx_for.sqlite3'
+	ip_names = prefs['db_dir'] + 'ip_names.sqlite3'
+	ip_ns_for = prefs['db_dir'] + 'ip_ns_for.sqlite3'
+	ip_open_servers = prefs['db_dir'] + 'ip_open_servers.sqlite3'
+	ip_peers = prefs['db_dir'] + 'ip_peers.sqlite3'
+	ip_rhostnames = prefs['db_dir'] + 'ip_rhostnames.sqlite3'
+
+	report_closed_server_ports = True
+
+	clean_ip_obj = ip_addr_obj(out_rec[IPAddr_e])
+	if clean_ip_obj is None:
+		return
+	clean_ip = explode_ip(clean_ip_obj, prefs, dests)
+
+
+	if prefs['db_dir']:
+		if out_rec[Type_e] == "DN":
+			if out_rec[Proto_e] in ('A', 'AAAA', 'CNAME', 'SRV'):
+				if clean_ip != '0.0.0.0':
+					if out_rec[Description_e]:
+						service_string = out_rec[State_e].rstrip('.') + ';' + out_rec[Description_e]
+					else:
+						service_string = out_rec[State_e].rstrip('.')
+					buffer_merges(ip_hostnames, clean_ip, [service_string,], max_adds)
+					buffer_merges(hostname_ips, out_rec[State_e].rstrip('.'), [clean_ip,], max_adds)
+			elif out_rec[Proto_e] in ('PTR'):
+				if clean_ip != '0.0.0.0':
+					if out_rec[Description_e]:
+						service_string = out_rec[State_e].rstrip('.') + ';' + out_rec[Description_e]
+					else:
+						service_string = out_rec[State_e].rstrip('.')
+					buffer_merges(ip_rhostnames, clean_ip, [service_string,], max_adds)
+					buffer_merges(hostname_ips, out_rec[State_e].rstrip('.'), [clean_ip,], max_adds)
+			elif out_rec[Proto_e] == 'NS':
+				domain = out_rec[State_e].rstrip('.')
+				#nameserver = out_rec[Description_e].rstrip('.')
+				buffer_merges(ip_ns_for, clean_ip, [domain,], max_adds)
+			elif out_rec[Proto_e] == 'MX':
+				domain = out_rec[State_e].rstrip('.')
+				#mailserver = out_rec[Description_e].rstrip('.')
+				buffer_merges(ip_mx_for, clean_ip, [domain,], max_adds)
+			elif out_rec[IPAddr_e] == '0.0.0.0' and out_rec[Proto_e] == 'SOA':
+				domain = out_rec[State_e].rstrip('.')
+				soa_fields = out_rec[Description_e].split(' ')
+				#one_dns = soa_fields[0]	#This is a nameserver _hostname_; would need manual conversion to an IP to store in ns_for.
+				#email_addr = soa_fields[1].replace('.', '@', 1)
+			elif out_rec[IPAddr_e] == '0.0.0.0' and out_rec[Proto_e] == 'TXT':
+				pass
+		#elif out_rec[Type_e] == "DO":
+		#	if out_rec[IPAddr_e] == '0.0.0.0' and out_rec[Proto_e] == 'reputation':
+		#		domain = out_rec[State_e].rstrip('.')
+		#		rep_string = out_rec[Description_e]
+		#		if rep_string:
+		elif out_rec[Type_e] == "NA":
+			if out_rec[Proto_e] in ('PTR', 'DHCP'):
+				if out_rec[Description_e]:
+					service_string = out_rec[State_e] + ';' + out_rec[Description_e]
+				else:
+					service_string = out_rec[State_e]
+				buffer_merges(ip_names, clean_ip, [service_string,], max_adds)		#Only forward at the moment
+			elif out_rec[Proto_e] in ('RP'):
+				#NA,0.0.0.0,RP,www.ktvc8.com.,dnsproxy.oray.com.
+				pass
+		#elif out_rec[Type_e] == "IP" and out_rec[Proto_e] in ("IP", "service_banner"):
+		#	if out_rec[Description_e] and out_rec[Description_e] != 'p0f failure':
+		#		service_string = out_rec[State_e] + ';' + out_rec[Description_e]
+		#	else:
+		#		service_string = out_rec[State_e]
+		elif out_rec[Type_e] == "PE" and out_rec[Proto_e] == "traceroute" and out_rec[State_e] in ('is_beyond', 'precedes'):
+			peer_ip_obj = ip_addr_obj(out_rec[Description_e])
+			if peer_ip_obj is None:
+				return
+			peer_ip = explode_ip(peer_ip_obj, prefs, dests)
+
+			buffer_merges(ip_peers, clean_ip, [peer_ip,], max_adds)
+			buffer_merges(ip_peers, peer_ip, [clean_ip,], max_adds)
+		elif out_rec[Type_e] in ("US", "UD"):
+			if out_rec[State_e] in ('open', 'listening'):
+				if out_rec[Description_e]:
+					service_string = out_rec[Proto_e] + ';' + out_rec[Description_e]
+				else:
+					service_string = out_rec[Proto_e]
+				buffer_merges(ip_open_servers, clean_ip, [service_string,], max_adds)
+			elif out_rec[State_e] == 'closed':
+				if report_closed_server_ports:
+					buffer_merges(ip_closed_servers, clean_ip, [out_rec[Proto_e],], max_adds)
+		elif out_rec[Type_e] == "UC":
+			if out_rec[State_e] == 'open':
+				if out_rec[Description_e]:
+					service_string = out_rec[Proto_e] + ';' + out_rec[Description_e]
+				else:
+					service_string = out_rec[Proto_e]
+				buffer_merges(ip_client_ports, clean_ip, [service_string,], max_adds)
+		elif out_rec[Type_e] == "TS":
+			if out_rec[State_e] == 'listening':
+				if out_rec[Description_e]:
+					service_string = out_rec[Proto_e] + ';' + out_rec[Description_e]
+				else:
+					service_string = out_rec[Proto_e]
+				buffer_merges(ip_open_servers, clean_ip, [service_string,], max_adds)
+			elif out_rec[State_e] == 'closed':
+				if report_closed_server_ports:
+					buffer_merges(ip_closed_servers, clean_ip, [out_rec[Proto_e],], max_adds)
+			#elif out_rec[State_e] == 'unknown':
+			#	if out_rec[Description_e]:
+			#		service_string = out_rec[Description_e]
+		elif out_rec[Type_e] == "TC":
+			if out_rec[State_e] == 'open':
+				if out_rec[Description_e]:
+					service_string = out_rec[Proto_e] + ';' + out_rec[Description_e]
+				else:
+					service_string = out_rec[Proto_e]
+				buffer_merges(ip_client_ports, clean_ip, [service_string,], max_adds)
+		elif out_rec[Type_e] == "RO":
+			if out_rec[State_e] == 'router':
+				buffer_merges(ip_flags, clean_ip, ['router',], max_adds)
+		elif out_rec[Type_e] == "MA":
+			if out_rec[Proto_e] == 'Ethernet':
+				if out_rec[Description_e]:
+					service_string = out_rec[State_e] + ';' + out_rec[Description_e]
+				else:
+					service_string = out_rec[State_e]
+				buffer_merges(ip_macaddrs, clean_ip, [service_string,], max_adds)
+		elif out_rec[Type_e] == "GE":
+			if out_rec[Proto_e] in ("CC", "COUNTRY", "CSC"):
+				#GE,10.0.0.0,CC,NU,
+				if out_rec[Description_e]:
+					service_string = out_rec[State_e] + ';' + out_rec[Description_e]
+				else:
+					service_string = out_rec[State_e]
+				buffer_merges(ip_locations, clean_ip, [service_string,], max_adds)
+		elif out_rec[Type_e] == "AS":
+			if out_rec[Proto_e] in ("AS"):
+				#AS,128.223.60.22,AS,3582,UONET - University of Oregon
+				if out_rec[Description_e]:
+					service_string = out_rec[State_e] + ';' + out_rec[Description_e]
+				else:
+					service_string = out_rec[State_e]
+				buffer_merges(ip_asns, clean_ip, [service_string,], max_adds)
+		elif out_rec[Type_e] == "PC":
+			if out_rec[State_e] == 'open':
+				if out_rec[Description_e]:
+					service_string = out_rec[Proto_e] + ';' + out_rec[Description_e]
+				else:
+					service_string = out_rec[Proto_e]
+				buffer_merges(ip_client_protocols, clean_ip, [service_string,], max_adds)
+		elif out_rec[Type_e] in ("NB", "NE"):
+			pass
+
+
+
+
+
 #======== Extraction functions ========
 #In the original (single process) passer script, these are called as:
 #	ReportAll(ARP_extract(p, meta, prefs, dests))
@@ -791,12 +961,12 @@ def ICMP_extract(p, meta, prefs, dests):
 
 	state_set = set([])
 
-	Type = p[ICMP].type
-	Code = p[ICMP].code
+	I_Type = p[ICMP].type
+	I_Code = p[ICMP].code
 
-	if Type in (3, 11, ):		#3=Unreachable, 11=Time exceeded.  All have embedded packets that may need attention
+	if I_Type in (3, 11, ):		#3=Unreachable, 11=Time exceeded.  All have embedded packets that may need attention
 		pass
-	#elif Type in ():
+	#elif I_Type in ():
 	#else:
 	#	p.show()
 	#	sys.exit(86)
