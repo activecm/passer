@@ -6,7 +6,7 @@
 from __future__ import print_function
 from turtle import color
 
-__version__ = '0.40'
+__version__ = '0.42'
 
 __author__ = 'William Stearns'
 __copyright__ = 'Copyright 2018-2022, William Stearns'
@@ -217,6 +217,9 @@ def output_handler(sh_da, prefs, dests):
 							pass
 						#except:
 						#	raise	#Raise is the default action, no need to specify
+
+				if prefs['db_dir'] and not output_handler.need_to_exit:
+					save_to_db(out_rec, prefs, dests)
 
 				if prefs['active'] and not output_handler.need_to_exit:
 					if out_rec[IPAddr_e] not in ('', '0.0.0.0', '::', '0000:0000:0000:0000:0000:0000:0000:0000'):
@@ -775,7 +778,7 @@ def IP_handler(task_q, sh_da, prefs, dests):
 			(p, meta) = task_q.get(block=True, timeout=None)
 			if p:
 			#### Smudge has entered the chat.
-				if cl_args['passive_fingerprinting'] != False and p.haslayer("TCP"):
+				if prefs['passive_fingerprinting'] != False and p.haslayer("TCP"):
 					if 'S' in str(p['TCP'].flags):
 						try:
 							packet_signature = signature(p)
@@ -1083,6 +1086,7 @@ if __name__ == '__main__':
 	parser.add_argument('-c', '--color', help='Enable or disable color coded text.', required=False, default=True)
 	parser.add_argument('-p', '--passive_fingerprinting', help='Enable Passive Fingerprinting Capabilities.', required=False, default=False, action='store_true')
 	parser.add_argument('-j', '--json', help='Load local json file for Passive Fingerprinting.', required=False, default=False)
+	parser.add_argument('--db_dir', help='Directory that holds sqlite databases for IP and hostname info', required=False, default=cache_dir + '/ip/')
 
 	(parsed, unparsed) = parser.parse_known_args()
 	cl_args = vars(parsed)
@@ -1144,6 +1148,7 @@ if __name__ == '__main__':
 
 	mkdir_p(config_dir)
 	mkdir_p(cache_dir)
+	mkdir_p(cache_dir + '/ip/')		#Used for sqlite databases of IP and hostname data	#FIXME
 	mkdir_p(cache_dir + '/ipv4/')
 	mkdir_p(cache_dir + '/ipv6/')
 	mkdir_p(cache_dir + '/dom/')
@@ -1267,6 +1272,8 @@ if __name__ == '__main__':
 			one_p.join()
 	except KeyboardInterrupt:
 		pass
+
+	buffer_merges("", "", [], 0)
 
 	#Shutdown other processes by submitting None to their respective input queues.  Ideally this should be done starting with the processes that feed queues, then moving down the handler list.
 	for shutdown_layer in layer_queues:
