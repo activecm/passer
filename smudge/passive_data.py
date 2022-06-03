@@ -92,7 +92,12 @@ class pull_data:
             data = cls.json.load(f)
             return data
 
-
+    @classmethod
+    def import_local_data(cls, json_file):
+        """Imports TCP Signatures from local raw JSON file."""
+        with open(json_file) as f:
+            data = cls.json.load(f)
+            return data
 
 class tcp_sig:
     """
