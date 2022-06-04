@@ -149,7 +149,7 @@ include_udp_errors_in_closed_ports = False	#If True, we look at unreachables and
 
 
 #======== Variables ========
-passer_lib_version = '0.27'
+passer_lib_version = '0.28'
 
 #Indexes into the tuple used in passing data to the output handler.  _e is for "enumerated"
 Type_e = 0
@@ -760,23 +760,57 @@ def UnhandledPacket(up_packet, prefs, dests):
 def save_to_db(out_rec, prefs, dests):
 	"""Take the fields in an output record tuple/list into the appropriate sqlite database."""
 
-	max_adds = 50
+	max_adds = 100
 
-	hostname_ips = prefs['db_dir'] + 'hostname_ips.sqlite3'		#Note; the databases are created automatically
-	ip_asns = prefs['db_dir'] + 'ip_asns.sqlite3'
-	ip_client_ports = prefs['db_dir'] + 'ip_client_ports.sqlite3'
-	ip_client_protocols = prefs['db_dir'] + 'ip_client_protocols.sqlite3'
-	ip_closed_servers = prefs['db_dir'] + 'ip_closed_servers.sqlite3'
-	ip_flags = prefs['db_dir'] + 'ip_flags.sqlite3'
-	ip_hostnames = prefs['db_dir'] + 'ip_hostnames.sqlite3'
-	ip_locations = prefs['db_dir'] + 'ip_locations.sqlite3'
-	ip_macaddrs = prefs['db_dir'] + 'ip_macaddrs.sqlite3'
-	ip_mx_for = prefs['db_dir'] + 'ip_mx_for.sqlite3'
-	ip_names = prefs['db_dir'] + 'ip_names.sqlite3'
-	ip_ns_for = prefs['db_dir'] + 'ip_ns_for.sqlite3'
-	ip_open_servers = prefs['db_dir'] + 'ip_open_servers.sqlite3'
-	ip_peers = prefs['db_dir'] + 'ip_peers.sqlite3'
-	ip_rhostnames = prefs['db_dir'] + 'ip_rhostnames.sqlite3'
+	if prefs['db_dir'] and prefs['archive_dir']:
+		#Note; the first database in each list is created automatically
+		hostname_ips = [prefs['db_dir'] + 'hostname_ips.sqlite3', prefs['db_dir'] + 'hostname_ips.sqlite3']
+		ip_asns = [prefs['db_dir'] + 'ip_asns.sqlite3', prefs['db_dir'] + 'ip_asns.sqlite3']
+		ip_client_ports = [prefs['db_dir'] + 'ip_client_ports.sqlite3', prefs['db_dir'] + 'ip_client_ports.sqlite3']
+		ip_client_protocols = [prefs['db_dir'] + 'ip_client_protocols.sqlite3', prefs['db_dir'] + 'ip_client_protocols.sqlite3']
+		ip_closed_servers = [prefs['db_dir'] + 'ip_closed_servers.sqlite3', prefs['db_dir'] + 'ip_closed_servers.sqlite3']
+		ip_flags = [prefs['db_dir'] + 'ip_flags.sqlite3', prefs['db_dir'] + 'ip_flags.sqlite3']
+		ip_hostnames = [prefs['db_dir'] + 'ip_hostnames.sqlite3', prefs['db_dir'] + 'ip_hostnames.sqlite3']
+		ip_locations = [prefs['db_dir'] + 'ip_locations.sqlite3', prefs['db_dir'] + 'ip_locations.sqlite3']
+		ip_macaddrs = [prefs['db_dir'] + 'ip_macaddrs.sqlite3', prefs['db_dir'] + 'ip_macaddrs.sqlite3']
+		ip_mx_for = [prefs['db_dir'] + 'ip_mx_for.sqlite3', prefs['db_dir'] + 'ip_mx_for.sqlite3']
+		ip_names = [prefs['db_dir'] + 'ip_names.sqlite3', prefs['db_dir'] + 'ip_names.sqlite3']
+		ip_ns_for = [prefs['db_dir'] + 'ip_ns_for.sqlite3', prefs['db_dir'] + 'ip_ns_for.sqlite3']
+		ip_open_servers = [prefs['db_dir'] + 'ip_open_servers.sqlite3', prefs['db_dir'] + 'ip_open_servers.sqlite3']
+		ip_peers = [prefs['db_dir'] + 'ip_peers.sqlite3', prefs['db_dir'] + 'ip_peers.sqlite3']
+		ip_rhostnames = [prefs['db_dir'] + 'ip_rhostnames.sqlite3', prefs['db_dir'] + 'ip_rhostnames.sqlite3']
+	elif prefs['db_dir']:
+		hostname_ips = prefs['db_dir'] + 'hostname_ips.sqlite3'
+		ip_asns = prefs['db_dir'] + 'ip_asns.sqlite3'
+		ip_client_ports = prefs['db_dir'] + 'ip_client_ports.sqlite3'
+		ip_client_protocols = prefs['db_dir'] + 'ip_client_protocols.sqlite3'
+		ip_closed_servers = prefs['db_dir'] + 'ip_closed_servers.sqlite3'
+		ip_flags = prefs['db_dir'] + 'ip_flags.sqlite3'
+		ip_hostnames = prefs['db_dir'] + 'ip_hostnames.sqlite3'
+		ip_locations = prefs['db_dir'] + 'ip_locations.sqlite3'
+		ip_macaddrs = prefs['db_dir'] + 'ip_macaddrs.sqlite3'
+		ip_mx_for = prefs['db_dir'] + 'ip_mx_for.sqlite3'
+		ip_names = prefs['db_dir'] + 'ip_names.sqlite3'
+		ip_ns_for = prefs['db_dir'] + 'ip_ns_for.sqlite3'
+		ip_open_servers = prefs['db_dir'] + 'ip_open_servers.sqlite3'
+		ip_peers = prefs['db_dir'] + 'ip_peers.sqlite3'
+		ip_rhostnames = prefs['db_dir'] + 'ip_rhostnames.sqlite3'
+	else:
+		hostname_ips = []
+		ip_asns = []
+		ip_client_ports = []
+		ip_client_protocols = []
+		ip_closed_servers = []
+		ip_flags = []
+		ip_hostnames = []
+		ip_locations = []
+		ip_macaddrs = []
+		ip_mx_for = []
+		ip_names = []
+		ip_ns_for = []
+		ip_open_servers = []
+		ip_peers = []
+		ip_rhostnames = []
 
 	report_closed_server_ports = True
 

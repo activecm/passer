@@ -4,9 +4,8 @@
 #Released under GPL v3
 
 from __future__ import print_function
-from turtle import color
 
-__version__ = '0.42'
+__version__ = '0.46'
 
 __author__ = 'William Stearns'
 __copyright__ = 'Copyright 2018-2022, William Stearns'
@@ -26,11 +25,13 @@ import sys
 import csv
 import fileinput
 import time
+import random
 import json
 import socket				#For dns lookups
 import codecs				#For python2 utf-8 writing
 #from scapy.all import sniff, Scapy_Exception, PcapWriter
 from scapy.all import *			#Please make sure you have an up-to-date version of scapy, at least 2.4.0
+from db_lib import select_key
 # Imports for passive_fingerprinting feature.
 from smudge.passive_data import passive_data
 from smudge.passive_data import pull_data
@@ -142,8 +143,8 @@ def output_handler(sh_da, prefs, dests):
 	if "need_to_exit" not in output_handler.__dict__:
 		output_handler.need_to_exit = False
 
-	if 'tr_already_submitted' not in output_handler.__dict__:
-		output_handler.tr_already_submitted = set([])
+	#if 'tr_already_submitted' not in output_handler.__dict__:		#No longer used, we do a database lookup now
+	#	output_handler.tr_already_submitted = set([])
 
 	os.nice(nice_raise)							#Lower priority to give higher priority to critical tasks
 	debug_out(whatami('output'), prefs, dests)
@@ -223,32 +224,70 @@ def output_handler(sh_da, prefs, dests):
 
 				if prefs['active'] and not output_handler.need_to_exit:
 					if out_rec[IPAddr_e] not in ('', '0.0.0.0', '::', '0000:0000:0000:0000:0000:0000:0000:0000'):
-						try:
-							dests['ip_lookup_asn'].put(out_rec[IPAddr_e], block=False)
-						except Full:
-							pass
+						if prefs['db_dir'] and prefs['archive_dir']:
+							asn_list = select_key([prefs['db_dir'] + 'ip_asns.sqlite3', prefs['archive_dir'] + 'ip_asns.sqlite3'], out_rec[IPAddr_e])
+							location_list = select_key([prefs['db_dir'] + 'ip_locations.sqlite3', prefs['archive_dir'] + 'ip_locations.sqlite3'], out_rec[IPAddr_e])
+							rhostname_list = select_key([prefs['db_dir'] + 'ip_rhostnames.sqlite3', prefs['archive_dir'] + 'ip_rhostnames.sqlite3'], out_rec[IPAddr_e])
+							traceroute_list = select_key([prefs['db_dir'] + 'ip_traceroutes.sqlite3', prefs['archive_dir'] + 'ip_traceroutes.sqlite3'], out_rec[IPAddr_e])
+							hostname_ip_list = select_key([prefs['db_dir'] + 'hostname_ips.sqlite3', prefs['archive_dir'] + 'hostname_ips.sqlite3'], out_rec[State_e])
+						elif prefs['db_dir']:
+							asn_list = select_key(prefs['db_dir'] + 'ip_asns.sqlite3', out_rec[IPAddr_e])
+							location_list = select_key(prefs['db_dir'] + 'ip_locations.sqlite3', out_rec[IPAddr_e])
+							rhostname_list = select_key(prefs['db_dir'] + 'ip_rhostnames.sqlite3', out_rec[IPAddr_e])
+							traceroute_list = select_key(prefs['db_dir'] + 'ip_traceroutes.sqlite3', out_rec[IPAddr_e])
+							hostname_ip_list = select_key(prefs['db_dir'] + 'hostname_ips.sqlite3', out_rec[State_e])
+						else:
+							asn_list = []
+							location_list = []
+							rhostname_list = []
+							traceroute_list = []
+							hostname_ip_list = []
 
-						try:
-							dests['ip_lookup_geoip'].put(out_rec[IPAddr_e], block=False)
-						except Full:
-							pass
+						if (not asn_list) or (asn_list and prefs['relearn_percent'] <= random.random() * 100):
+							try:
+								dests['ip_lookup_asn'].put(out_rec[IPAddr_e], block=False)
+							except Full:
+								pass
+						else:
+							sys.stderr.write('~')
 
-						try:
-							dests['ip_lookup_hostname'].put(out_rec[IPAddr_e], block=False)
-						except Full:
-							pass
+						if (not location_list) or (location_list and prefs['relearn_percent'] <= random.random() * 100):
+							try:
+								dests['ip_lookup_geoip'].put(out_rec[IPAddr_e], block=False)
+							except Full:
+								pass
+						else:
+							sys.stderr.write('~')
 
-						if out_rec[IPAddr_e] not in output_handler.tr_already_submitted:
-							output_handler.tr_already_submitted.add(out_rec[IPAddr_e])
+						if (not rhostname_list) or (rhostname_list and prefs['relearn_percent'] <= random.random() * 100):
+							try:
+								dests['ip_lookup_hostname'].put(out_rec[IPAddr_e], block=False)
+							except Full:
+								pass
+						else:
+							sys.stderr.write('~')
+
+						#if out_rec[IPAddr_e] not in output_handler.tr_already_submitted:
+						#	output_handler.tr_already_submitted.add(out_rec[IPAddr_e])
+						if (not traceroute_list) or (traceroute_list and prefs['relearn_percent'] <= random.random() * 100):
 							try:
 								dests['ip_lookup_traceroute'].put(out_rec[IPAddr_e], block=False)
 							except Full:
 								pass
+						else:
+							sys.stderr.write('~')
+
 					if out_rec[Type_e] == "DN" and out_rec[Proto_e] in ('A', 'AAAA', 'PTR', 'CNAME'):
-						try:
-							dests['host_lookup'].put(out_rec[State_e], block=False)
-						except Full:
-							pass
+						if (not hostname_ip_list) or (hostname_ip_list and prefs['relearn_percent'] <= random.random() * 100):
+							try:
+								dests['host_lookup'].put(out_rec[State_e], block=False)
+							except Full:
+								pass
+						else:
+							sys.stderr.write('~')
+
+					sys.stderr.flush()
+
 	debug_out('Exiting output', prefs, dests)
 
 
@@ -1087,6 +1126,7 @@ if __name__ == '__main__':
 	parser.add_argument('-p', '--passive_fingerprinting', help='Enable Passive Fingerprinting Capabilities.', required=False, default=False, action='store_true')
 	parser.add_argument('-j', '--json', help='Load local json file for Passive Fingerprinting.', required=False, default=False)
 	parser.add_argument('--db_dir', help='Directory that holds sqlite databases for IP and hostname info', required=False, default=cache_dir + '/ip/')
+	parser.add_argument('--archive_dir', help='Directory that holds read-only older sqlite databases for IP and hostname info', required=False, default=cache_dir + '/ip_archive/')
 
 	(parsed, unparsed) = parser.parse_known_args()
 	cl_args = vars(parsed)
@@ -1094,7 +1134,7 @@ if __name__ == '__main__':
 	cl_args['geolite_loaded'] = geolite_loaded
 	cl_args['scapy_traceroute_loaded'] = scapy_traceroute_loaded
 	cl_args['ip2asn_loaded'] = ip2asn_loaded
-
+	cl_args['relearn_percent'] = 10.0
 
 	if cl_args['bpf']:
 		if len(unparsed) > 0:
@@ -1119,7 +1159,7 @@ if __name__ == '__main__':
 		passive_data.setup_db()
 		# Create DB  Connection
 		conn = passive_data.create_con()
-		
+
 		if cl_args['json'] != False:
 			tcp_sig_data = pull_data.import_local_data(cl_args['json'])
 			# Iterate over JSON Objects
@@ -1148,7 +1188,8 @@ if __name__ == '__main__':
 
 	mkdir_p(config_dir)
 	mkdir_p(cache_dir)
-	mkdir_p(cache_dir + '/ip/')		#Used for sqlite databases of IP and hostname data	#FIXME
+	mkdir_p(cl_args['db_dir'])		#Used for sqlite databases of IP and hostname data
+	mkdir_p(cl_args['archive_dir'])		#Used for older read-only sqlite databases of IP and hostname data
 	mkdir_p(cache_dir + '/ipv4/')
 	mkdir_p(cache_dir + '/ipv6/')
 	mkdir_p(cache_dir + '/dom/')
