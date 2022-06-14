@@ -88,15 +88,10 @@
 
 ### Prerequisites
 
-This is an example of how to list things you need to use the software and how to install them.
-* npm
-  ```sh
-  npm install npm@latest -g
-  ```
-
+Ensure that scapy is installed:
+[Scapy Install](https://scapy.readthedocs.io/en/latest/installation.html#installing-scapy-v2-x/)
 
 <p align="right">(<a href="#top">back to top</a>)</p>
-
 
 
 <!-- USAGE EXAMPLES -->
@@ -116,15 +111,105 @@ _For more examples, please refer to the [Documentation](https://example.com)_
 <!-- Signatures -->
 ## Create Your Own Signatures
 
+Currently **SMUDGE** only detects signatures from TCP SYN packets. TCP SYN packets are passively sniffed with **Passer**. If **SMUDGE** is enabled, the a signature is generated and it is searched for in the database. Signatures need to be created from known sources to add additional entries into our database.
+
+A signature for a TCP SYN packet look like this:
+
+```
+sig = ver:ittl:olen:mss:wsize,scale:olayout:quirks:pclass
+```
+
+---
+
+### Version
+`ver` - signature for IPv4 ('4'), IPv6 ('6'), or both ('*').
+
+---
+
+### Initial Time to Live
+`ittl` - initial TTL used by the OS. Almost all operating systems use 64, 128, or 255; ancient versions of Windows sometimes used 32, and several obscure systems sometimes resort to odd values such as 60.
+
+---
+
+### Options Length
+`olen` - length of IPv4 options or IPv6 extension headers. Usually zero for normal IPv4 traffic; always zero for IPv6 due to the limitations of libpcap/winpcap/npcap. 
+
+---
+
+### Maximum Segment Size
+`mss`  - maximum segment size, if specified in TCP options. Special value of '*' can be used to denote that MSS varies depending on the parameters of sender's network link, and should not be a part of the signature. In this case, MSS will be used to guess the type of network hookup according to the [mtu] rules.
+
+--- 
+
+### Window Size
+`wsize` - window size. Can be expressed as a fixed value, but many operating systems set it to a multiple of MSS or MTU, or a multiple of some random integer. **SMUDGE** allows notation such as 'mss*4', 'mtu*4', or '%8192' to be used. Wilcard ('*') is possible too.
+
+---
+
+### Window Scaling Factor
+`scale` - window scaling factor, if specified in TCP options. Fixed value or '*'.
+
+---
+
+### Options Layout
+`olayout` - comma-delimited layout and ordering of TCP option. This is a longer string and is comprised of several values.
+ 
+| Item        | Description                                             | 
+| ----------- | -----------                                             |
+| eol+n       | explicit end of options, followed by n bytes of padding | 
+| nop         | no-op option                                            |
+| mss         | maximum segment size                                    |
+| ws          | window scaling                                          |
+| sok         | selective ACK permitted                                 |
+| sack        | selective ACK (should not be seen)                      |
+| ts          | timestamp                                               |
+| ?n          | unknown option ID n                                     |
+
+---
+
+### Quirks
+`quirks`     - comma-delimited properties and quirks observed in IP or TCP headers.
+
+The definition of a quirk is a `peculiar behavioral habit`. When quirks are observed in IP/TCP headers, it is import to ensure that they continue to be observed. Quirks may not present themselves the same way everytime. Do your best to find items on this list that offer repeatability.
+
+| Item        | Description                                             | 
+| ----------- | -----------                                             |
+| df          | "don't fragment" set (probably PMTUD); ignored for IPv6 | 
+| id+         | DF set but IPID non-zero; ignored for IPv6              |
+| id-         | DF not set but IPID is zero; ignored for IPv6           |
+| ecn         | explicit congestion notification support                |
+| 0+          | "must be zero" field not zero; ignored for IPv6         |
+| flow        | non-zero IPv6 flow ID; ignored for IPv4                 |
+|             |                                                         |
+| seq-        | sequence number is zero                                 |
+| ack+        | ACK number is non-zero, but ACK flag not set            |
+| ack-        | ACK number is zero, but ACK flag set                    |
+| uptr+       | URG pointer is non-zero, but URG flag not set           |
+| urgf+       | URG flag used                                           |
+| pushf+      | PUSH flag used                                          |
+|             |                                                         |
+| ts1-        | own timestamp specified as zero                         |
+| ts2+        | non-zero peer timestamp on initial SYN                  |
+| opt+        | trailing non-zero data in options segment               |
+| exws        | excessive window scaling factor (> 14)                  |
+| bad         | malformed TCP options                                   |
+
+---
+
+### Payload Size Classification
+`pclass`     - payload size classification: '0' for zero, '+' for non-zero, '*' for any. The packets we fingerprint right now normally have no payloads, but some corner cases exist.
+
+---
+
 This repository includes a tool called "sig_gen.py". This tool can be leveraged to create signatures from known sources. Signatures are created in the same format as p0f and information about the signature format can be found here [p0f](https://github.com/p0f/p0f).
 
 Signatures are stored in a Github Repository maintained by Active COuntermeasures that can be found here [tcp-sig-json](https://github.com/activecm/tcp-sig-json).
 Adding a new signature is as easy creating a new pull request.
 
-
-
-
 <p align="right">(<a href="#top">back to top</a>)</p>
+
+
+
 
 
 
