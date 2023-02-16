@@ -1,4 +1,4 @@
-FROM python:2.7-alpine
+FROM python:3.9-alpine
 
 # Shorten common strings
 ARG GH=https://raw.githubusercontent.com
@@ -11,7 +11,9 @@ ADD $GH/royhills/arp-scan/master/ieee-oui.txt           $USR/arp-scan/ieee-oui.t
 ADD $GH/nmap/nmap/master/nmap-service-probes            $USR/nmap/nmap-service-probes
 
 # tcpdump is needed by scapy to replay pcaps
-RUN apk update && apk add --no-cache tcpdump
+# binutils is needed for objdump
+# musl-utils is needed for ldconfig
+RUN apk update && apk add --no-cache tcpdump libpcap libpcap-dev musl-utils binutils
 
 # Install and configure python libraries
 COPY requirements.txt /requirements.txt
