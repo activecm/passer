@@ -164,9 +164,7 @@ different system.
 ```
 
 This is generally intended for the development process; packets
-saved to this file are ones that need to have signatures written.  If
-you'd like to help improve the program, get in touch with the author,
-Bill Stearns (william.l.stearns@gmail.com).  Contributions of odd packets,
+saved to this file are ones that need to have signatures written. Contributions of odd packets,
 descriptions of services, and patches to the program are gratefully
 accepted.
 
@@ -193,9 +191,8 @@ socket.error: (1, 'Operation not permitted')
 You're probably trying to sniff live as a non-root user.  Either
 log in as root, use sudo/su, or work with pcap files.
 
-If passer crashes or won't work on your system, send me an email
-(Bill Stearns, william.l.stearns@gmail.com).  It would be very helpful if you
-could include the error message, if any, and any details about your
+If passer crashes or won't work on your system, please make an issue that
+includes the error message, if any, and any details about your
 operating system.
 
 ### Output format
@@ -388,13 +385,3 @@ network:
 'host 1.2.3.4'
 'net 1.2'
 ```
-
-## More info
-
-Questions?  Bug reports?  Issues?  Try william.l.stearns@gmail.com and
-please include "passer" somewhere in the subject line.
-
-* Home site:
-  * http://www.stearns.org/passer/
-* Github repository:
-  * https://github.com/activecm/passer
